@@ -110,12 +110,12 @@ async function handleInstall(skills, tabId) {
     if (tabs.length > 0) {
       claudeTab = tabs[0];
       await chrome.tabs.update(claudeTab.id, {
-        url: "https://claude.ai/settings/capabilities",
+        url: "https://claude.ai/customize/skills",
         active: true,
       });
     } else {
       claudeTab = await chrome.tabs.create({
-        url: "https://claude.ai/settings/capabilities",
+        url: "https://claude.ai/customize/skills",
         active: true,
       });
     }
