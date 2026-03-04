@@ -2,30 +2,39 @@
 // Handles: registry fetching, skill downloading, zip creation, install orchestration
 
 const REGISTRY_URL =
-  "https://raw.githubusercontent.com/your-org/skillman-registry/main/registry.json";
+  "https://raw.githubusercontent.com/neklam161/Skillman/main/registry/registry.json";
 
 // ── Registry ──────────────────────────────────────────────────────────────────
 
 async function fetchRegistry() {
   try {
+    console.log("[Skillman] Fetching registry from:", REGISTRY_URL);
     const res = await fetch(REGISTRY_URL);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
+    const data = await res.json();
+    console.log("[Skillman] Registry loaded from GitHub:", data.length, "skills");
+    return data;
   } catch (e) {
-    // Fall back to bundled registry (registry.json lives in extension root)
+    console.warn("[Skillman] Remote registry failed:", e.message, "— falling back to bundled registry");
     const url = chrome.runtime.getURL("registry.json");
+    console.log("[Skillman] Loading bundled registry from:", url);
     const res = await fetch(url);
     if (!res.ok) throw new Error("Could not load bundled registry");
-    return await res.json();
+    const data = await res.json();
+    console.log("[Skillman] Bundled registry loaded:", data.length, "skills");
+    return data;
   }
 }
 
-// ── Skill downloading & zipping ───────────────────────────────────────────────
+// ── Skill downloading ─────────────────────────────────────────────────────────
 
 async function downloadSkillFile(url) {
+  console.log("[Skillman] Downloading skill from:", url);
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`Failed to download skill: HTTP ${res.status}`);
-  return await res.arrayBuffer();
+  if (!res.ok) throw new Error(`Failed to download skill: HTTP ${res.status} from ${url}`);
+  const buffer = await res.arrayBuffer();
+  console.log("[Skillman] Downloaded", buffer.byteLength, "bytes");
+  return buffer;
 }
 
 // ── Message router ────────────────────────────────────────────────────────────
@@ -34,14 +43,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "FETCH_REGISTRY") {
     fetchRegistry()
       .then((data) => sendResponse({ ok: true, data }))
-      .catch((err) => sendResponse({ ok: false, error: err.message }));
-    return true; // async
+      .catch((err) => {
+        console.error("[Skillman] FETCH_REGISTRY error:", err);
+        sendResponse({ ok: false, error: err.message });
+      });
+    return true;
   }
 
   if (message.type === "INSTALL_SKILLS") {
     handleInstall(message.skills, sender.tab?.id)
       .then(() => sendResponse({ ok: true }))
-      .catch((err) => sendResponse({ ok: false, error: err.message }));
+      .catch((err) => {
+        console.error("[Skillman] INSTALL_SKILLS error:", err);
+        sendResponse({ ok: false, error: err.message });
+      });
     return true;
   }
 
@@ -56,82 +71,115 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // ── Install orchestration ─────────────────────────────────────────────────────
 
 async function handleInstall(skills, tabId) {
-  // Download all .skill files (they're already zips)
+  console.log("[Skillman] Starting install for:", skills.map(s => s.name));
+
+  // Step 1: Download all .skill files
   const blobs = [];
   for (const skill of skills) {
     try {
+      console.log(`[Skillman] Downloading: ${skill.name} from ${skill.source}`);
       notifyPopup({ type: "PROGRESS", skill: skill.name, status: "downloading" });
       const buffer = await downloadSkillFile(skill.source);
       blobs.push({ skill, buffer });
       notifyPopup({ type: "PROGRESS", skill: skill.name, status: "downloaded" });
+      console.log(`[Skillman] Download OK: ${skill.name}`);
     } catch (e) {
+      console.error(`[Skillman] Download FAILED for ${skill.name}:`, e.message);
       notifyPopup({ type: "PROGRESS", skill: skill.name, status: "error", message: e.message });
     }
   }
 
-  if (blobs.length === 0) return;
+  console.log(`[Skillman] Downloaded ${blobs.length}/${skills.length} skills successfully`);
 
-  // Open claude.ai settings tab
-  notifyPopup({ type: "STATUS", message: "Opening Claude settings..." });
-
-  let claudeTab;
-  const tabs = await chrome.tabs.query({ url: "https://claude.ai/*" });
-
-  if (tabs.length > 0) {
-    claudeTab = tabs[0];
-    await chrome.tabs.update(claudeTab.id, {
-      url: "https://claude.ai/settings/capabilities",
-      active: true,
-    });
-  } else {
-    claudeTab = await chrome.tabs.create({
-      url: "https://claude.ai/settings/capabilities",
-      active: true,
-    });
+  if (blobs.length === 0) {
+    console.error("[Skillman] Nothing downloaded — aborting install");
+    notifyPopup({ type: "STATUS", message: "Download failed. Check console for details." });
+    notifyPopup({ type: "DONE" });
+    return;
   }
 
-  // Wait for page load
-  await waitForTabLoad(claudeTab.id);
-  await sleep(2000);
+  // Step 2: Open claude.ai settings
+  notifyPopup({ type: "STATUS", message: "Opening Claude settings..." });
+  console.log("[Skillman] Opening claude.ai/settings/capabilities...");
 
-  // Inject skills one by one
+  let claudeTab;
+  try {
+    const tabs = await chrome.tabs.query({ url: "https://claude.ai/*" });
+    console.log(`[Skillman] Found ${tabs.length} existing claude.ai tab(s)`);
+
+    if (tabs.length > 0) {
+      claudeTab = tabs[0];
+      await chrome.tabs.update(claudeTab.id, {
+        url: "https://claude.ai/settings/capabilities",
+        active: true,
+      });
+    } else {
+      claudeTab = await chrome.tabs.create({
+        url: "https://claude.ai/settings/capabilities",
+        active: true,
+      });
+    }
+    console.log(`[Skillman] Using tab ID: ${claudeTab.id}`);
+  } catch (e) {
+    console.error("[Skillman] Failed to open claude.ai tab:", e.message);
+    notifyPopup({ type: "STATUS", message: "Failed to open Claude. Are you logged in?" });
+    notifyPopup({ type: "DONE" });
+    return;
+  }
+
+  // Step 3: Wait for page to fully load
+  console.log("[Skillman] Waiting for page load...");
+  await waitForTabLoad(claudeTab.id);
+  await sleep(3000);
+  console.log("[Skillman] Page ready. Starting injection...");
+
+  // Step 4: Inject each skill
   for (const { skill, buffer } of blobs) {
     try {
+      console.log(`[Skillman] Injecting skill: ${skill.name}`);
       notifyPopup({ type: "PROGRESS", skill: skill.name, status: "installing" });
+      notifyPopup({ type: "STATUS", message: `Installing ${skill.display_name || skill.name}...` });
 
-      // Convert buffer to base64 to pass via scripting API
       const base64 = bufferToBase64(buffer);
+      console.log(`[Skillman] base64 size: ${base64.length} chars`);
 
-      await chrome.scripting.executeScript({
+      const results = await chrome.scripting.executeScript({
         target: { tabId: claudeTab.id },
         func: injectSkillUpload,
         args: [skill.name, base64],
       });
 
-      await sleep(2500); // Give claude.ai time to process each upload
+      console.log(`[Skillman] Injection result for ${skill.name}:`, JSON.stringify(results));
 
+      await sleep(3000);
       notifyPopup({ type: "PROGRESS", skill: skill.name, status: "installed" });
+      console.log(`[Skillman] Install complete: ${skill.name}`);
     } catch (e) {
+      console.error(`[Skillman] Injection FAILED for ${skill.name}:`, e.message);
       notifyPopup({ type: "PROGRESS", skill: skill.name, status: "error", message: e.message });
     }
   }
 
-  // Save installed skills to storage
+  // Step 5: Save to local storage
   const existing = await getInstalled();
   const updated = [
     ...existing.filter((s) => !blobs.find((b) => b.skill.name === s.name)),
     ...blobs.map((b) => ({ name: b.skill.name, installedAt: Date.now() })),
   ];
   await chrome.storage.local.set({ installed: updated });
+  console.log("[Skillman] Saved to storage:", updated.map(s => s.name));
 
+  notifyPopup({ type: "STATUS", message: "Done!" });
   notifyPopup({ type: "DONE" });
 }
 
 // ── Injected into claude.ai page ──────────────────────────────────────────────
-// This function runs IN the claude.ai page context
+// NOTE: This function runs inside the claude.ai page context — no extension APIs available
 
 function injectSkillUpload(skillName, base64Data) {
   return new Promise((resolve, reject) => {
+    console.log("[Skillman-inject] Starting injection for:", skillName);
+
     try {
       // Convert base64 back to blob
       const binary = atob(base64Data);
@@ -139,62 +187,75 @@ function injectSkillUpload(skillName, base64Data) {
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
       const blob = new Blob([bytes], { type: "application/zip" });
       const file = new File([blob], `${skillName}.skill`, { type: "application/zip" });
+      console.log("[Skillman-inject] Created File:", file.name, file.size, "bytes");
 
-      // Find the file input for skill upload
-      // Claude.ai uses a hidden <input type="file"> triggered by a button
-      const fileInputs = document.querySelectorAll('input[type="file"]');
+      // Strategy 1: Look for existing file input
+      const allInputs = document.querySelectorAll('input[type="file"]');
+      console.log("[Skillman-inject] File inputs on page:", allInputs.length);
+
       let skillInput = null;
-
-      for (const input of fileInputs) {
-        if (
-          input.accept?.includes("zip") ||
-          input.accept?.includes(".skill") ||
-          input.closest("[data-testid*='skill']") ||
-          input.closest("[class*='skill']")
-        ) {
+      for (const input of allInputs) {
+        const accepts = input.accept || "";
+        const parentText = input.closest("[class]")?.textContent?.toLowerCase() || "";
+        if (accepts.includes("zip") || accepts.includes(".skill") || parentText.includes("skill")) {
           skillInput = input;
+          console.log("[Skillman-inject] Matched input, accept:", accepts);
           break;
         }
       }
 
-      // Fallback: find the Skills section upload button and click it first
+      // Strategy 2: Click the upload button first
       if (!skillInput) {
-        const buttons = Array.from(document.querySelectorAll("button"));
-        const uploadBtn = buttons.find(
-          (b) =>
-            b.textContent?.toLowerCase().includes("upload") ||
-            b.textContent?.toLowerCase().includes("add skill") ||
-            b.getAttribute("aria-label")?.toLowerCase().includes("skill")
-        );
-        if (uploadBtn) uploadBtn.click();
+        console.log("[Skillman-inject] No direct input — looking for upload button...");
+        const allButtons = Array.from(document.querySelectorAll("button, [role='button']"));
+        const btnTexts = allButtons.map(b => b.textContent?.trim()).filter(Boolean);
+        console.log("[Skillman-inject] All buttons:", JSON.stringify(btnTexts.slice(0, 30)));
 
-        // Re-check for file input after click
-        setTimeout(() => {
-          const inputs = document.querySelectorAll('input[type="file"]');
-          const input = inputs[inputs.length - 1]; // most recently added
-          if (input) {
-            injectFile(input, file, resolve, reject);
-          } else {
-            reject(new Error("Could not find skill upload input"));
-          }
-        }, 800);
+        const uploadBtn = allButtons.find(btn => {
+          const text = (btn.textContent || "").toLowerCase();
+          const label = (btn.getAttribute("aria-label") || "").toLowerCase();
+          return text.includes("upload") || text.includes("add skill") ||
+                 text.includes("import") || label.includes("upload") || label.includes("skill");
+        });
+
+        if (uploadBtn) {
+          console.log("[Skillman-inject] Clicking upload button:", uploadBtn.textContent?.trim());
+          uploadBtn.click();
+          setTimeout(() => {
+            const inputs = document.querySelectorAll('input[type="file"]');
+            console.log("[Skillman-inject] Inputs after click:", inputs.length);
+            if (inputs.length > 0) {
+              injectFileIntoInput(inputs[inputs.length - 1], file, resolve, reject);
+            } else {
+              reject(new Error("No file input found after clicking upload button"));
+            }
+          }, 1000);
+          return;
+        }
+
+        reject(new Error("Could not find upload button. Page buttons: " + JSON.stringify(btnTexts.slice(0, 10))));
         return;
       }
 
-      injectFile(skillInput, file, resolve, reject);
+      injectFileIntoInput(skillInput, file, resolve, reject);
+
     } catch (e) {
+      console.error("[Skillman-inject] Error:", e.message);
       reject(e);
     }
 
-    function injectFile(input, file, resolve, reject) {
+    function injectFileIntoInput(input, file, resolve, reject) {
       try {
+        console.log("[Skillman-inject] Injecting file into input");
         const dt = new DataTransfer();
         dt.items.add(file);
         input.files = dt.files;
         input.dispatchEvent(new Event("change", { bubbles: true }));
         input.dispatchEvent(new Event("input", { bubbles: true }));
-        setTimeout(resolve, 1000);
+        console.log("[Skillman-inject] File injected OK");
+        setTimeout(resolve, 1500);
       } catch (e) {
+        console.error("[Skillman-inject] Inject failed:", e.message);
         reject(e);
       }
     }
@@ -210,9 +271,7 @@ function sleep(ms) {
 function bufferToBase64(buffer) {
   const bytes = new Uint8Array(buffer);
   let binary = "";
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
+  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
   return btoa(binary);
 }
 
@@ -225,6 +284,7 @@ function waitForTabLoad(tabId) {
       }
     };
     chrome.tabs.onUpdated.addListener(listener);
+    setTimeout(resolve, 8000); // fallback timeout
   });
 }
 
@@ -235,5 +295,5 @@ async function getInstalled() {
 }
 
 function notifyPopup(message) {
-  chrome.runtime.sendMessage(message).catch(() => {}); // popup may be closed, ignore
+  chrome.runtime.sendMessage(message).catch(() => {});
 }
