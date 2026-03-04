@@ -6,7 +6,7 @@
     "tags": ["documents", "writing", "office"],
     "author": "Anthropic",
     "version": "1.0.0",
-    "source": "https://raw.githubusercontent.com/your-org/skillman-registry/main/skills/docx.skill",
+    "source": "https://raw.githubusercontent.com/neklam161/Skillman/main/skills/docx.skill",
     "icon": "📄"
   },
   {
@@ -16,7 +16,7 @@
     "tags": ["documents", "pdf", "files"],
     "author": "Anthropic",
     "version": "1.0.0",
-    "source": "https://raw.githubusercontent.com/your-org/skillman-registry/main/skills/pdf.skill",
+    "source": "https://raw.githubusercontent.com/neklam161/Skillman/main/skills/pdf.skill",
     "icon": "📑"
   },
   {
@@ -26,7 +26,7 @@
     "tags": ["presentations", "slides", "office"],
     "author": "Anthropic",
     "version": "1.0.0",
-    "source": "https://raw.githubusercontent.com/your-org/skillman-registry/main/skills/pptx.skill",
+    "source": "https://raw.githubusercontent.com/neklam161/Skillman/main/skills/pptx.skill",
     "icon": "📊"
   },
   {
@@ -36,7 +36,7 @@
     "tags": ["spreadsheets", "data", "office"],
     "author": "Anthropic",
     "version": "1.0.0",
-    "source": "https://raw.githubusercontent.com/your-org/skillman-registry/main/skills/xlsx.skill",
+    "source": "https://raw.githubusercontent.com/neklam161/Skillman/main/skills/xlsx.skill",
     "icon": "📈"
   },
   {
@@ -46,7 +46,7 @@
     "tags": ["web", "design", "ui", "frontend"],
     "author": "Anthropic",
     "version": "1.0.0",
-    "source": "https://raw.githubusercontent.com/your-org/skillman-registry/main/skills/frontend-design.skill",
+    "source": "https://raw.githubusercontent.com/neklam161/Skillman/main/skills/frontend-design.skill",
     "icon": "🎨"
   },
   {
@@ -56,18 +56,8 @@
     "tags": ["meta", "skills", "development"],
     "author": "Anthropic",
     "version": "1.0.0",
-    "source": "https://raw.githubusercontent.com/your-org/skillman-registry/main/skills/skill-creator.skill",
+    "source": "https://raw.githubusercontent.com/neklam161/Skillman/main/skills/skill-creator.skill",
     "icon": "🛠️"
-  },
-  {
-    "name": "article-writing",
-    "display_name": "Article Writing",
-    "description": "Write long-form articles, blog posts, guides and newsletters in a consistent, distinctive voice.",
-    "tags": ["writing", "content", "blog"],
-    "author": "Community",
-    "version": "1.0.0",
-    "source": "https://raw.githubusercontent.com/your-org/skillman-registry/main/skills/article-writing.skill",
-    "icon": "✍️"
   },
   {
     "name": "mcp-builder",
@@ -76,7 +66,7 @@
     "tags": ["development", "mcp", "api", "tools"],
     "author": "Anthropic",
     "version": "1.0.0",
-    "source": "https://raw.githubusercontent.com/your-org/skillman-registry/main/skills/mcp-builder.skill",
+    "source": "https://raw.githubusercontent.com/neklam161/Skillman/main/skills/mcp-builder.skill",
     "icon": "🔌"
   }
 ]
