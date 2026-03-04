@@ -1,0 +1,82 @@
+[
+  {
+    "name": "docx",
+    "display_name": "Word Documents",
+    "description": "Create, edit and format professional Word documents (.docx) with tables, headings, page numbers and styles.",
+    "tags": ["documents", "writing", "office"],
+    "author": "Anthropic",
+    "version": "1.0.0",
+    "source": "https://raw.githubusercontent.com/your-org/skillman-registry/main/skills/docx.skill",
+    "icon": "📄"
+  },
+  {
+    "name": "pdf",
+    "display_name": "PDF Tools",
+    "description": "Read, create, merge, split, rotate and extract content from PDF files.",
+    "tags": ["documents", "pdf", "files"],
+    "author": "Anthropic",
+    "version": "1.0.0",
+    "source": "https://raw.githubusercontent.com/your-org/skillman-registry/main/skills/pdf.skill",
+    "icon": "📑"
+  },
+  {
+    "name": "pptx",
+    "display_name": "PowerPoint",
+    "description": "Create and edit polished PowerPoint presentations (.pptx) with layouts, themes and speaker notes.",
+    "tags": ["presentations", "slides", "office"],
+    "author": "Anthropic",
+    "version": "1.0.0",
+    "source": "https://raw.githubusercontent.com/your-org/skillman-registry/main/skills/pptx.skill",
+    "icon": "📊"
+  },
+  {
+    "name": "xlsx",
+    "display_name": "Excel Spreadsheets",
+    "description": "Create and manipulate Excel spreadsheets (.xlsx) with formulas, charts and data formatting.",
+    "tags": ["spreadsheets", "data", "office"],
+    "author": "Anthropic",
+    "version": "1.0.0",
+    "source": "https://raw.githubusercontent.com/your-org/skillman-registry/main/skills/xlsx.skill",
+    "icon": "📈"
+  },
+  {
+    "name": "frontend-design",
+    "display_name": "Frontend Design",
+    "description": "Build polished, production-grade frontend UIs, web components and landing pages.",
+    "tags": ["web", "design", "ui", "frontend"],
+    "author": "Anthropic",
+    "version": "1.0.0",
+    "source": "https://raw.githubusercontent.com/your-org/skillman-registry/main/skills/frontend-design.skill",
+    "icon": "🎨"
+  },
+  {
+    "name": "skill-creator",
+    "display_name": "Skill Creator",
+    "description": "Create, test, iterate and publish new Claude skills with built-in evaluation tools.",
+    "tags": ["meta", "skills", "development"],
+    "author": "Anthropic",
+    "version": "1.0.0",
+    "source": "https://raw.githubusercontent.com/your-org/skillman-registry/main/skills/skill-creator.skill",
+    "icon": "🛠️"
+  },
+  {
+    "name": "article-writing",
+    "display_name": "Article Writing",
+    "description": "Write long-form articles, blog posts, guides and newsletters in a consistent, distinctive voice.",
+    "tags": ["writing", "content", "blog"],
+    "author": "Community",
+    "version": "1.0.0",
+    "source": "https://raw.githubusercontent.com/your-org/skillman-registry/main/skills/article-writing.skill",
+    "icon": "✍️"
+  },
+  {
+    "name": "mcp-builder",
+    "display_name": "MCP Builder",
+    "description": "Design and build high-quality MCP servers to integrate Claude with external APIs and services.",
+    "tags": ["development", "mcp", "api", "tools"],
+    "author": "Anthropic",
+    "version": "1.0.0",
+    "source": "https://raw.githubusercontent.com/your-org/skillman-registry/main/skills/mcp-builder.skill",
+    "icon": "🔌"
+  }
+]
