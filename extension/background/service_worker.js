@@ -12,9 +12,10 @@ async function fetchRegistry() {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   } catch (e) {
-    // Fall back to bundled registry
-    const url = chrome.runtime.getURL("../registry/registry.json");
+    // Fall back to bundled registry (registry.json lives in extension root)
+    const url = chrome.runtime.getURL("registry.json");
     const res = await fetch(url);
+    if (!res.ok) throw new Error("Could not load bundled registry");
     return await res.json();
   }
 }
