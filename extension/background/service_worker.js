@@ -1,5 +1,5 @@
 // service_worker.js — Skillman background worker
-// Handles: registry fetching, skill downloading, zip creation, install orchestration
+// Handles: registry fetching, skill downloading, install orchestration
 
 const REGISTRY_URL =
   "https://raw.githubusercontent.com/neklam161/Skillman/main/registry/registry.json";
@@ -15,9 +15,8 @@ async function fetchRegistry() {
     console.log("[Skillman] Registry loaded from GitHub:", data.length, "skills");
     return data;
   } catch (e) {
-    console.warn("[Skillman] Remote registry failed:", e.message, "— falling back to bundled registry");
+    console.warn("[Skillman] Remote registry failed:", e.message, "— falling back to bundled");
     const url = chrome.runtime.getURL("registry.json");
-    console.log("[Skillman] Loading bundled registry from:", url);
     const res = await fetch(url);
     if (!res.ok) throw new Error("Could not load bundled registry");
     const data = await res.json();
@@ -31,7 +30,7 @@ async function fetchRegistry() {
 async function downloadSkillFile(url) {
   console.log("[Skillman] Downloading skill from:", url);
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`Failed to download skill: HTTP ${res.status} from ${url}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status} from ${url}`);
   const buffer = await res.arrayBuffer();
   console.log("[Skillman] Downloaded", buffer.byteLength, "bytes");
   return buffer;
@@ -43,18 +42,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "FETCH_REGISTRY") {
     fetchRegistry()
       .then((data) => sendResponse({ ok: true, data }))
+      .catch((err) => sendResponse({ ok: false, error: err.message }));
+    return true;
+  }
+
+  if (message.type === "INSTALL_SKILLS") {
+    handleInstall(message.skills)
+      .then(() => sendResponse({ ok: true }))
       .catch((err) => {
-        console.error("[Skillman] FETCH_REGISTRY error:", err);
+        console.error("[Skillman] INSTALL_SKILLS error:", err);
         sendResponse({ ok: false, error: err.message });
       });
     return true;
   }
 
-  if (message.type === "INSTALL_SKILLS") {
-    handleInstall(message.skills, sender.tab?.id)
+  if (message.type === "INSTALL_ZIPPED") {
+    handleInstallZipped(message.skillName, message.zipBase64)
       .then(() => sendResponse({ ok: true }))
       .catch((err) => {
-        console.error("[Skillman] INSTALL_SKILLS error:", err);
+        console.error("[Skillman] INSTALL_ZIPPED error:", err);
         sendResponse({ ok: false, error: err.message });
       });
     return true;
@@ -66,47 +72,110 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     });
     return true;
   }
+
+  // Popup reopened mid-install — send back current session state
+  if (message.type === "GET_SESSION") {
+    chrome.storage.local.get("session", (res) => {
+      sendResponse({ session: res.session || null });
+    });
+    return true;
+  }
 });
+
+// ── Session state helpers (fix #2 — popup close) ─────────────────────────────
+// We persist install progress to storage so the popup can recover it on reopen
+
+async function setSession(data) {
+  await chrome.storage.local.set({ session: data });
+}
+
+async function clearSession() {
+  await chrome.storage.local.remove("session");
+}
+
+// ── Tab close detection (fix #3) ─────────────────────────────────────────────
+
+function waitForTabClose(tabId) {
+  return new Promise((resolve) => {
+    const listener = (id) => {
+      if (id === tabId) {
+        chrome.tabs.onRemoved.removeListener(listener);
+        resolve(true); // true = tab was closed
+      }
+    };
+    chrome.tabs.onRemoved.addListener(listener);
+  });
+}
+
+// ── Login check (fix #1) ──────────────────────────────────────────────────────
+
+async function checkLoggedIn(tabId) {
+  const results = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: () => {
+      // If we got redirected to login, the URL won't be the skills page
+      const url = window.location.href;
+      const isLoginPage =
+        url.includes("/login") ||
+        url.includes("/sign-in") ||
+        url.includes("claude.ai/login") ||
+        document.title.toLowerCase().includes("sign in") ||
+        !!document.querySelector('input[type="password"]');
+      return { url, isLoginPage };
+    }
+  });
+  return results?.[0]?.result || { isLoginPage: false };
+}
 
 // ── Install orchestration ─────────────────────────────────────────────────────
 
-async function handleInstall(skills, tabId) {
+async function handleInstall(skills) {
   console.log("[Skillman] Starting install for:", skills.map(s => s.name));
+
+  // Save session so popup can recover if closed
+  await setSession({
+    skills: skills.map(s => ({ name: s.name, display_name: s.display_name, icon: s.icon })),
+    progress: {},
+    status: "starting",
+    startedAt: Date.now()
+  });
 
   // Step 1: Download all .skill files
   const blobs = [];
   for (const skill of skills) {
     try {
-      console.log(`[Skillman] Downloading: ${skill.name} from ${skill.source}`);
+      console.log(`[Skillman] Downloading: ${skill.name}`);
       notifyPopup({ type: "PROGRESS", skill: skill.name, status: "downloading" });
+      await updateSessionProgress(skill.name, "downloading");
+
       const buffer = await downloadSkillFile(skill.source);
       blobs.push({ skill, buffer });
+
       notifyPopup({ type: "PROGRESS", skill: skill.name, status: "downloaded" });
+      await updateSessionProgress(skill.name, "downloaded");
       console.log(`[Skillman] Download OK: ${skill.name}`);
     } catch (e) {
       console.error(`[Skillman] Download FAILED for ${skill.name}:`, e.message);
       notifyPopup({ type: "PROGRESS", skill: skill.name, status: "error", message: e.message });
+      await updateSessionProgress(skill.name, "error");
     }
   }
 
-  console.log(`[Skillman] Downloaded ${blobs.length}/${skills.length} skills successfully`);
-
   if (blobs.length === 0) {
-    console.error("[Skillman] Nothing downloaded — aborting install");
-    notifyPopup({ type: "STATUS", message: "Download failed. Check console for details." });
-    notifyPopup({ type: "DONE" });
+    console.error("[Skillman] Nothing downloaded — aborting");
+    notifyPopup({ type: "STATUS", message: "All downloads failed. Check your internet connection." });
+    notifyPopup({ type: "DONE", hadErrors: true });
+    await clearSession();
     return;
   }
 
-  // Step 2: Open claude.ai settings
-  notifyPopup({ type: "STATUS", message: "Opening Claude settings..." });
-  console.log("[Skillman] Opening claude.ai/settings/capabilities...");
+  // Step 2: Open claude.ai skills page
+  notifyPopup({ type: "STATUS", message: "Opening Claude..." });
+  await setSession({ status: "opening_claude" });
 
   let claudeTab;
   try {
     const tabs = await chrome.tabs.query({ url: "https://claude.ai/*" });
-    console.log(`[Skillman] Found ${tabs.length} existing claude.ai tab(s)`);
-
     if (tabs.length > 0) {
       claudeTab = tabs[0];
       await chrome.tabs.update(claudeTab.id, {
@@ -121,46 +190,96 @@ async function handleInstall(skills, tabId) {
     }
     console.log(`[Skillman] Using tab ID: ${claudeTab.id}`);
   } catch (e) {
-    console.error("[Skillman] Failed to open claude.ai tab:", e.message);
-    notifyPopup({ type: "STATUS", message: "Failed to open Claude. Are you logged in?" });
-    notifyPopup({ type: "DONE" });
+    console.error("[Skillman] Failed to open tab:", e.message);
+    notifyPopup({ type: "STATUS", message: "Could not open Claude. Try again." });
+    notifyPopup({ type: "DONE", hadErrors: true });
+    await clearSession();
     return;
   }
 
-  // Step 3: Wait for page to fully load
+  // Step 3: Wait for page load — but also watch for tab being closed (#3)
   console.log("[Skillman] Waiting for page load...");
-  await waitForTabLoad(claudeTab.id);
-  await sleep(3000);
-  console.log("[Skillman] Page ready. Starting injection...");
+  notifyPopup({ type: "STATUS", message: "Waiting for Claude to load..." });
 
-  // Step 4: Inject each skill
+  const tabClosed = waitForTabClose(claudeTab.id);
+  const pageLoaded = waitForTabLoad(claudeTab.id);
+
+  const winner = await Promise.race([
+    pageLoaded.then(() => "loaded"),
+    tabClosed.then(() => "closed"),
+  ]);
+
+  if (winner === "closed") {
+    console.warn("[Skillman] Tab was closed before page loaded");
+    notifyPopup({ type: "STATUS", message: "The Claude tab was closed. Install cancelled." });
+    notifyPopup({ type: "DONE", hadErrors: true });
+    await clearSession();
+    return;
+  }
+
+  await sleep(3000);
+
+  // Step 4: Check if user is actually logged in (#1)
+  console.log("[Skillman] Checking login status...");
+  let loginCheck;
+  try {
+    loginCheck = await checkLoggedIn(claudeTab.id);
+  } catch (e) {
+    loginCheck = { isLoginPage: false };
+  }
+
+  if (loginCheck.isLoginPage) {
+    console.warn("[Skillman] User is not logged in, detected login page:", loginCheck.url);
+    notifyPopup({
+      type: "STATUS",
+      message: "⚠️ You're not logged in to Claude. Please log in and try again."
+    });
+    notifyPopup({ type: "NOT_LOGGED_IN" });
+    notifyPopup({ type: "DONE", hadErrors: true });
+    await clearSession();
+    return;
+  }
+
+  console.log("[Skillman] Logged in, page ready. Starting injection...");
+
+  // Step 5: Inject each skill — watch for tab close between each one (#3)
   for (const { skill, buffer } of blobs) {
+    // Check if tab still exists before each injection
+    const tabStillOpen = await chrome.tabs.get(claudeTab.id).then(() => true).catch(() => false);
+    if (!tabStillOpen) {
+      console.warn("[Skillman] Tab closed mid-install");
+      notifyPopup({ type: "STATUS", message: "Claude tab was closed mid-install. Some skills may not have installed." });
+      notifyPopup({ type: "DONE", hadErrors: true });
+      await clearSession();
+      return;
+    }
+
     try {
-      console.log(`[Skillman] Injecting skill: ${skill.name}`);
+      console.log(`[Skillman] Injecting: ${skill.name}`);
       notifyPopup({ type: "PROGRESS", skill: skill.name, status: "installing" });
       notifyPopup({ type: "STATUS", message: `Installing ${skill.display_name || skill.name}...` });
+      await updateSessionProgress(skill.name, "installing");
 
       const base64 = bufferToBase64(buffer);
-      console.log(`[Skillman] base64 size: ${base64.length} chars`);
-
       const results = await chrome.scripting.executeScript({
         target: { tabId: claudeTab.id },
         func: injectSkillUpload,
         args: [skill.name, base64],
       });
 
-      console.log(`[Skillman] Injection result for ${skill.name}:`, JSON.stringify(results));
-
+      console.log(`[Skillman] Inject result for ${skill.name}:`, JSON.stringify(results));
       await sleep(3000);
+
       notifyPopup({ type: "PROGRESS", skill: skill.name, status: "installed" });
-      console.log(`[Skillman] Install complete: ${skill.name}`);
+      await updateSessionProgress(skill.name, "installed");
     } catch (e) {
-      console.error(`[Skillman] Injection FAILED for ${skill.name}:`, e.message);
+      console.error(`[Skillman] Inject FAILED for ${skill.name}:`, e.message);
       notifyPopup({ type: "PROGRESS", skill: skill.name, status: "error", message: e.message });
+      await updateSessionProgress(skill.name, "error");
     }
   }
 
-  // Step 5: Save to local storage
+  // Step 6: Save installed to storage
   const existing = await getInstalled();
   const updated = [
     ...existing.filter((s) => !blobs.find((b) => b.skill.name === s.name)),
@@ -169,19 +288,78 @@ async function handleInstall(skills, tabId) {
   await chrome.storage.local.set({ installed: updated });
   console.log("[Skillman] Saved to storage:", updated.map(s => s.name));
 
-  notifyPopup({ type: "STATUS", message: "Done!" });
-  notifyPopup({ type: "DONE" });
+  notifyPopup({ type: "STATUS", message: "All done!" });
+  notifyPopup({ type: "DONE", hadErrors: false });
+  await clearSession();
+}
+
+// ── INSTALL_ZIPPED (folder-based installs) ────────────────────────────────────
+
+async function handleInstallZipped(skillName, zipBase64) {
+  console.log("[Skillman] Installing zipped skill:", skillName);
+
+  const binary = atob(zipBase64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  const buffer = bytes.buffer;
+
+  // Open claude.ai tab
+  let claudeTab;
+  const tabs = await chrome.tabs.query({ url: "https://claude.ai/*" });
+  if (tabs.length > 0) {
+    claudeTab = tabs[0];
+    await chrome.tabs.update(claudeTab.id, { url: "https://claude.ai/customize/skills", active: true });
+  } else {
+    claudeTab = await chrome.tabs.create({ url: "https://claude.ai/customize/skills", active: true });
+  }
+
+  // Watch for tab close
+  const tabClosed = waitForTabClose(claudeTab.id);
+  const pageLoaded = waitForTabLoad(claudeTab.id);
+  const winner = await Promise.race([
+    pageLoaded.then(() => "loaded"),
+    tabClosed.then(() => "closed"),
+  ]);
+
+  if (winner === "closed") {
+    throw new Error("Claude tab was closed before install could complete");
+  }
+
+  await sleep(3000);
+
+  // Check login
+  const loginCheck = await checkLoggedIn(claudeTab.id).catch(() => ({ isLoginPage: false }));
+  if (loginCheck.isLoginPage) {
+    throw new Error("Not logged in to Claude — please log in and try again");
+  }
+
+  // Check tab still open
+  const tabStillOpen = await chrome.tabs.get(claudeTab.id).then(() => true).catch(() => false);
+  if (!tabStillOpen) throw new Error("Claude tab was closed");
+
+  const base64 = bufferToBase64(buffer);
+  await chrome.scripting.executeScript({
+    target: { tabId: claudeTab.id },
+    func: injectSkillUpload,
+    args: [skillName, base64],
+  });
+
+  // Save to storage
+  const existing = await getInstalled();
+  const updated = [
+    ...existing.filter(s => s.name !== skillName),
+    { name: skillName, installedAt: Date.now() }
+  ];
+  await chrome.storage.local.set({ installed: updated });
+  console.log("[Skillman] Zipped install saved:", skillName);
 }
 
 // ── Injected into claude.ai page ──────────────────────────────────────────────
-// NOTE: This function runs inside the claude.ai page context — no extension APIs available
 
 function injectSkillUpload(skillName, base64Data) {
   return new Promise((resolve, reject) => {
     console.log("[Skillman-inject] Starting injection for:", skillName);
-
     try {
-      // Convert base64 back to blob
       const binary = atob(base64Data);
       const bytes = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
@@ -189,7 +367,6 @@ function injectSkillUpload(skillName, base64Data) {
       const file = new File([blob], `${skillName}.skill`, { type: "application/zip" });
       console.log("[Skillman-inject] Created File:", file.name, file.size, "bytes");
 
-      // Strategy 1: Look for existing file input
       const allInputs = document.querySelectorAll('input[type="file"]');
       console.log("[Skillman-inject] File inputs on page:", allInputs.length);
 
@@ -199,17 +376,14 @@ function injectSkillUpload(skillName, base64Data) {
         const parentText = input.closest("[class]")?.textContent?.toLowerCase() || "";
         if (accepts.includes("zip") || accepts.includes(".skill") || parentText.includes("skill")) {
           skillInput = input;
-          console.log("[Skillman-inject] Matched input, accept:", accepts);
           break;
         }
       }
 
-      // Strategy 2: Click the upload button first
       if (!skillInput) {
-        console.log("[Skillman-inject] No direct input — looking for upload button...");
         const allButtons = Array.from(document.querySelectorAll("button, [role='button']"));
         const btnTexts = allButtons.map(b => b.textContent?.trim()).filter(Boolean);
-        console.log("[Skillman-inject] All buttons:", JSON.stringify(btnTexts.slice(0, 30)));
+        console.log("[Skillman-inject] Buttons:", JSON.stringify(btnTexts.slice(0, 20)));
 
         const uploadBtn = allButtons.find(btn => {
           const text = (btn.textContent || "").toLowerCase();
@@ -219,11 +393,10 @@ function injectSkillUpload(skillName, base64Data) {
         });
 
         if (uploadBtn) {
-          console.log("[Skillman-inject] Clicking upload button:", uploadBtn.textContent?.trim());
+          console.log("[Skillman-inject] Clicking button:", uploadBtn.textContent?.trim());
           uploadBtn.click();
           setTimeout(() => {
             const inputs = document.querySelectorAll('input[type="file"]');
-            console.log("[Skillman-inject] Inputs after click:", inputs.length);
             if (inputs.length > 0) {
               injectFileIntoInput(inputs[inputs.length - 1], file, resolve, reject);
             } else {
@@ -238,7 +411,6 @@ function injectSkillUpload(skillName, base64Data) {
       }
 
       injectFileIntoInput(skillInput, file, resolve, reject);
-
     } catch (e) {
       console.error("[Skillman-inject] Error:", e.message);
       reject(e);
@@ -246,7 +418,6 @@ function injectSkillUpload(skillName, base64Data) {
 
     function injectFileIntoInput(input, file, resolve, reject) {
       try {
-        console.log("[Skillman-inject] Injecting file into input");
         const dt = new DataTransfer();
         dt.items.add(file);
         input.files = dt.files;
@@ -255,7 +426,6 @@ function injectSkillUpload(skillName, base64Data) {
         console.log("[Skillman-inject] File injected OK");
         setTimeout(resolve, 1500);
       } catch (e) {
-        console.error("[Skillman-inject] Inject failed:", e.message);
         reject(e);
       }
     }
@@ -294,70 +464,14 @@ async function getInstalled() {
   });
 }
 
-function notifyPopup(message) {
-  chrome.runtime.sendMessage(message).catch(() => {});
+async function updateSessionProgress(skillName, status) {
+  const data = await new Promise(resolve => chrome.storage.local.get("session", r => resolve(r.session)));
+  if (!data) return;
+  data.progress = data.progress || {};
+  data.progress[skillName] = status;
+  await chrome.storage.local.set({ session: data });
 }
 
-// ── INSTALL_ZIPPED handler ────────────────────────────────────────────────────
-// For folder-based installs — receives a pre-zipped base64 buffer from popup
-
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === "INSTALL_ZIPPED") {
-    handleInstallZipped(message.skillName, message.zipBase64)
-      .then(() => sendResponse({ ok: true }))
-      .catch((err) => {
-        console.error("[Skillman] INSTALL_ZIPPED error:", err);
-        sendResponse({ ok: false, error: err.message });
-      });
-    return true;
-  }
-});
-
-async function handleInstallZipped(skillName, zipBase64) {
-  console.log("[Skillman] Installing zipped skill:", skillName);
-
-  // Convert base64 to buffer
-  const binary = atob(zipBase64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  const buffer = bytes.buffer;
-
-  const skill = {
-    name: skillName,
-    display_name: skillName,
-    source: null, // already have buffer
-    icon: "🔗"
-  };
-
-  // Open claude.ai skills page
-  let claudeTab;
-  const tabs = await chrome.tabs.query({ url: "https://claude.ai/*" });
-  if (tabs.length > 0) {
-    claudeTab = tabs[0];
-    await chrome.tabs.update(claudeTab.id, { url: "https://claude.ai/customize/skills", active: true });
-  } else {
-    claudeTab = await chrome.tabs.create({ url: "https://claude.ai/customize/skills", active: true });
-  }
-
-  await waitForTabLoad(claudeTab.id);
-  await sleep(3000);
-
-  const base64 = bufferToBase64(buffer);
-
-  const results = await chrome.scripting.executeScript({
-    target: { tabId: claudeTab.id },
-    func: injectSkillUpload,
-    args: [skillName, base64],
-  });
-
-  console.log("[Skillman] INSTALL_ZIPPED result:", JSON.stringify(results));
-
-  // Save to storage
-  const existing = await getInstalled();
-  const updated = [
-    ...existing.filter(s => s.name !== skillName),
-    { name: skillName, installedAt: Date.now() }
-  ];
-  await chrome.storage.local.set({ installed: updated });
-  console.log("[Skillman] Saved zipped install to storage");
+function notifyPopup(message) {
+  chrome.runtime.sendMessage(message).catch(() => {});
 }

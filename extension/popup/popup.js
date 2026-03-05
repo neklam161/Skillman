@@ -26,8 +26,79 @@ async function init() {
   const res = await chrome.runtime.sendMessage({ type: "GET_INSTALLED" });
   installedNames = new Set((res.installed || []).map((s) => s.name));
 
-  // Fetch registry
+  // Check if there is an active install session (popup was closed mid-install)
+  const sessionRes = await chrome.runtime.sendMessage({ type: "GET_SESSION" });
+  if (sessionRes.session) {
+    recoverSession(sessionRes.session);
+    return; // don't load registry while install is in progress
+  }
+
   await loadRegistry();
+}
+
+// Recover UI state if popup was closed mid-install (#2)
+function recoverSession(session) {
+  overlay.style.display = "flex";
+  progressItems.innerHTML = "";
+  btnDone.style.display = "none";
+  progressSub.textContent = "Install in progress...";
+
+  // Rebuild progress rows from saved session
+  for (const skill of session.skills) {
+    const status = session.progress?.[skill.name] || "pending";
+    const row = document.createElement("div");
+    row.className = "progress-item";
+    row.innerHTML = `
+      <div class="progress-item-icon">${skill.icon || "🔧"}</div>
+      <div class="progress-item-name">${skill.display_name || skill.name}</div>
+      <div class="status-indicator ${status}" id="ind-${skill.name}"></div>
+      <div class="progress-item-status status-${status}" id="st-${skill.name}">${status}</div>
+    `;
+    progressItems.appendChild(row);
+  }
+
+  // Re-attach listener to catch remaining progress messages
+  chrome.runtime.onMessage.addListener(function sessionListener(message) {
+    if (message.type === "PROGRESS") {
+      const ind = document.getElementById(`ind-${message.skill}`);
+      const st  = document.getElementById(`st-${message.skill}`);
+      if (ind && st) {
+        ind.className = `status-indicator ${message.status}`;
+        st.className  = `progress-item-status status-${message.status}`;
+        st.textContent = message.status;
+      }
+    }
+    if (message.type === "STATUS") progressSub.textContent = message.message;
+    if (message.type === "NOT_LOGGED_IN") {
+      showNotLoggedIn();
+    }
+    if (message.type === "DONE") {
+      progressSub.textContent = message.hadErrors ? "Finished with some errors." : "All done!";
+      btnDone.style.display = "block";
+      chrome.runtime.onMessage.removeListener(sessionListener);
+    }
+  });
+}
+
+// Show a clear not-logged-in message (#1)
+function showNotLoggedIn() {
+  progressItems.innerHTML = `
+    <div style="
+      text-align:center;
+      padding: 20px 10px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    ">
+      <div style="font-size: 28px">🔐</div>
+      <div style="font-weight: 600; font-size: 13px; color: var(--text)">Not logged in to Claude</div>
+      <div style="font-size: 11px; color: var(--text-2); line-height: 1.5">
+        Please log in to <a href="https://claude.ai" target="_blank" style="color:var(--accent-2)">claude.ai</a>
+        and try again.
+      </div>
+    </div>
+  `;
 }
 
 async function loadRegistry() {
@@ -192,10 +263,12 @@ async function handleInstall() {
     if (message.type === "STATUS") {
       progressSub.textContent = message.message;
     }
+    if (message.type === "NOT_LOGGED_IN") {
+      showNotLoggedIn();
+    }
     if (message.type === "DONE") {
-      progressSub.textContent = "All done!";
+      progressSub.textContent = message.hadErrors ? "Finished with some errors." : "All done!";
       btnDone.style.display = "block";
-      // Update local installed set
       skills.forEach((s) => installedNames.add(s.name));
       selectedNames.clear();
       updateFooter();
