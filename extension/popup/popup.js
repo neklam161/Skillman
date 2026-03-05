@@ -1,11 +1,12 @@
-// popup.js — Skillman popup logic
+// popup.js — Skillman
 
 // ── State ──────────────────────────────────────────────────────────────────
-let allSkills = [];
+let allSkills      = [];
+let customSkills   = [];   // #3 — URL-installed skills
 let installedNames = new Set();
-let selectedNames = new Set();
-let activeTag = "all";
-let searchQuery = "";
+let selectedNames  = new Set();
+let activeTag      = "all";
+let searchQuery    = "";
 
 // ── DOM refs ───────────────────────────────────────────────────────────────
 const listEl        = document.getElementById("skills-list");
@@ -19,97 +20,66 @@ const overlay       = document.getElementById("overlay");
 const progressItems = document.getElementById("progress-items");
 const progressSub   = document.getElementById("progress-subtitle");
 const btnDone       = document.getElementById("btn-done");
+const orbIcon       = document.getElementById("orb-icon");
 
 // ── Boot ───────────────────────────────────────────────────────────────────
 async function init() {
-  // Load installed list from storage
   const res = await chrome.runtime.sendMessage({ type: "GET_INSTALLED" });
-  installedNames = new Set((res.installed || []).map((s) => s.name));
+  installedNames = new Set((res.installed || []).map(s => s.name));
 
-  // Check if there is an active install session (popup was closed mid-install)
+  // Load custom (URL-installed) skills from storage (#3)
+  const customRes = await chrome.storage.local.get("customSkills");
+  customSkills = customRes.customSkills || [];
+
+  // Recover session if popup was closed mid-install (#2)
   const sessionRes = await chrome.runtime.sendMessage({ type: "GET_SESSION" });
   if (sessionRes.session) {
     recoverSession(sessionRes.session);
-    return; // don't load registry while install is in progress
+    return;
   }
 
   await loadRegistry();
 }
 
-// Recover UI state if popup was closed mid-install (#2)
+// ── Session recovery (#2) ──────────────────────────────────────────────────
 function recoverSession(session) {
-  overlay.style.display = "flex";
+  showOverlay();
+  progressSub.textContent = "Install in progress...";
   progressItems.innerHTML = "";
   btnDone.style.display = "none";
-  progressSub.textContent = "Install in progress...";
 
-  // Rebuild progress rows from saved session
   for (const skill of session.skills) {
     const status = session.progress?.[skill.name] || "pending";
-    const row = document.createElement("div");
-    row.className = "progress-item";
-    row.innerHTML = `
-      <div class="progress-item-icon">${skill.icon || "🔧"}</div>
-      <div class="progress-item-name">${skill.display_name || skill.name}</div>
-      <div class="status-indicator ${status}" id="ind-${skill.name}"></div>
-      <div class="progress-item-status status-${status}" id="st-${skill.name}">${status}</div>
-    `;
-    progressItems.appendChild(row);
+    appendProgressRow(skill, status);
   }
 
-  // Re-attach listener to catch remaining progress messages
-  chrome.runtime.onMessage.addListener(function sessionListener(message) {
-    if (message.type === "PROGRESS") {
-      const ind = document.getElementById(`ind-${message.skill}`);
-      const st  = document.getElementById(`st-${message.skill}`);
-      if (ind && st) {
-        ind.className = `status-indicator ${message.status}`;
-        st.className  = `progress-item-status status-${message.status}`;
-        st.textContent = message.status;
-      }
-    }
-    if (message.type === "STATUS") progressSub.textContent = message.message;
-    if (message.type === "NOT_LOGGED_IN") {
-      showNotLoggedIn();
-    }
-    if (message.type === "DONE") {
-      progressSub.textContent = message.hadErrors ? "Finished with some errors." : "All done!";
-      btnDone.style.display = "block";
-      chrome.runtime.onMessage.removeListener(sessionListener);
-    }
-  });
+  attachProgressListener(session.skills);
 }
 
-// Show a clear not-logged-in message (#1)
+// ── Not logged in (#1) ─────────────────────────────────────────────────────
 function showNotLoggedIn() {
   progressItems.innerHTML = `
-    <div style="
-      text-align:center;
-      padding: 20px 10px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 10px;
-    ">
-      <div style="font-size: 28px">🔐</div>
-      <div style="font-weight: 600; font-size: 13px; color: var(--text)">Not logged in to Claude</div>
-      <div style="font-size: 11px; color: var(--text-2); line-height: 1.5">
-        Please log in to <a href="https://claude.ai" target="_blank" style="color:var(--accent-2)">claude.ai</a>
+    <div style="text-align:center;padding:20px 10px;display:flex;flex-direction:column;align-items:center;gap:10px">
+      <div style="font-size:28px">🔐</div>
+      <div style="font-weight:600;font-size:13px;color:var(--text)">Not logged in to Claude</div>
+      <div style="font-size:11px;color:var(--text-2);line-height:1.6">
+        Please log in to
+        <a href="https://claude.ai" target="_blank" style="color:var(--accent-2)">claude.ai</a>
         and try again.
       </div>
     </div>
   `;
+  orbIcon.textContent = "🔐";
 }
 
+// ── Registry ───────────────────────────────────────────────────────────────
 async function loadRegistry() {
   loadingEl.style.display = "flex";
   listEl.innerHTML = "";
   listEl.appendChild(loadingEl);
-
   btnRefresh.classList.add("spinning");
 
   const res = await chrome.runtime.sendMessage({ type: "FETCH_REGISTRY" });
-
   btnRefresh.classList.remove("spinning");
 
   if (!res.ok) {
@@ -125,10 +95,10 @@ async function loadRegistry() {
 // ── Tag filters ────────────────────────────────────────────────────────────
 function buildTagFilters() {
   const tagSet = new Set();
-  allSkills.forEach((s) => (s.tags || []).forEach((t) => tagSet.add(t)));
+  allSkills.forEach(s => (s.tags || []).forEach(t => tagSet.add(t)));
 
   tagFiltersEl.innerHTML = `<button class="tag active" data-tag="all">All</button>`;
-  [...tagSet].sort().forEach((tag) => {
+  [...tagSet].sort().forEach(tag => {
     const btn = document.createElement("button");
     btn.className = "tag";
     btn.dataset.tag = tag;
@@ -136,60 +106,75 @@ function buildTagFilters() {
     tagFiltersEl.appendChild(btn);
   });
 
-  tagFiltersEl.addEventListener("click", (e) => {
+  tagFiltersEl.addEventListener("click", e => {
     const btn = e.target.closest(".tag");
     if (!btn) return;
-    document.querySelectorAll(".tag").forEach((b) => b.classList.remove("active"));
+    document.querySelectorAll(".tag").forEach(b => b.classList.remove("active"));
     btn.classList.add("active");
     activeTag = btn.dataset.tag;
     renderSkills();
   });
 }
 
-// ── Render skills ──────────────────────────────────────────────────────────
+// ── Render skills (#3 — shows custom installs too) ─────────────────────────
 function renderSkills() {
   const q = searchQuery.toLowerCase();
+  listEl.innerHTML = "";
 
-  const filtered = allSkills.filter((skill) => {
-    const matchesTag =
-      activeTag === "all" || (skill.tags || []).includes(activeTag);
-    const matchesSearch =
-      !q ||
+  const filtered = allSkills.filter(skill => {
+    const matchesTag = activeTag === "all" || (skill.tags || []).includes(activeTag);
+    const matchesSearch = !q ||
       skill.name.toLowerCase().includes(q) ||
       (skill.display_name || "").toLowerCase().includes(q) ||
       (skill.description || "").toLowerCase().includes(q);
     return matchesTag && matchesSearch;
   });
 
-  listEl.innerHTML = "";
-
-  if (filtered.length === 0) {
+  if (filtered.length === 0 && customSkills.length === 0) {
     listEl.innerHTML = `<div class="empty">No skills found</div>`;
     return;
   }
 
-  filtered.forEach((skill) => {
-    const card = buildSkillCard(skill);
-    listEl.appendChild(card);
-  });
+  filtered.forEach(skill => listEl.appendChild(buildSkillCard(skill)));
+
+  // Custom/URL-installed skills section (#3)
+  const filteredCustom = customSkills.filter(skill =>
+    !q ||
+    skill.name.toLowerCase().includes(q) ||
+    (skill.display_name || "").toLowerCase().includes(q)
+  );
+
+  if (filteredCustom.length > 0) {
+    const label = document.createElement("div");
+    label.className = "section-label";
+    label.textContent = "Installed from URL";
+    listEl.appendChild(label);
+    filteredCustom.forEach(skill => listEl.appendChild(buildSkillCard(skill, true)));
+  }
 }
 
-function buildSkillCard(skill) {
+function buildSkillCard(skill, isCustom = false) {
   const isInstalled = installedNames.has(skill.name);
   const isSelected  = selectedNames.has(skill.name);
 
   const card = document.createElement("div");
-  card.className = `skill-card${isSelected ? " selected" : ""}${isInstalled ? " installed" : ""}`;
+  card.className = ["skill-card", isSelected ? "selected" : "", isInstalled ? "installed" : "", isCustom ? "custom" : ""].filter(Boolean).join(" ");
   card.dataset.name = skill.name;
+
+  const authorLabel = isInstalled
+    ? `<span class="installed-badge">installed</span>`
+    : isCustom
+      ? `<span class="skill-author">custom</span>`
+      : `<span class="skill-author">${skill.author || "community"}</span>`;
 
   card.innerHTML = `
     <div class="skill-icon">${skill.icon || "🔧"}</div>
     <div class="skill-info">
       <div class="skill-name-row">
         <span class="skill-name">${skill.display_name || skill.name}</span>
-        ${isInstalled ? `<span class="installed-badge">installed</span>` : `<span class="skill-author">${skill.author || "community"}</span>`}
+        ${authorLabel}
       </div>
-      <div class="skill-desc">${skill.description}</div>
+      <div class="skill-desc">${skill.description || ""}</div>
     </div>
     <div class="skill-check">
       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
@@ -203,266 +188,261 @@ function buildSkillCard(skill) {
 }
 
 function toggleSkill(name) {
-  if (selectedNames.has(name)) {
-    selectedNames.delete(name);
-  } else {
-    selectedNames.add(name);
-  }
-  // Update card UI
+  selectedNames.has(name) ? selectedNames.delete(name) : selectedNames.add(name);
   const card = listEl.querySelector(`[data-name="${name}"]`);
   if (card) card.classList.toggle("selected", selectedNames.has(name));
-
   updateFooter();
 }
 
 function updateFooter() {
   const n = selectedNames.size;
-  selectedCount.textContent = n === 0
-    ? "0 skills selected"
-    : `${n} skill${n > 1 ? "s" : ""} selected`;
+  selectedCount.textContent = n === 0 ? "0 skills selected" : `${n} skill${n > 1 ? "s" : ""} selected`;
   btnInstall.disabled = n === 0;
 }
 
-// ── Install ────────────────────────────────────────────────────────────────
+// ── Install from registry ──────────────────────────────────────────────────
 async function handleInstall() {
-  const skills = allSkills.filter((s) => selectedNames.has(s.name));
+  const skills = [...allSkills, ...customSkills].filter(s => selectedNames.has(s.name));
   if (skills.length === 0) return;
 
-  // Show overlay
-  overlay.style.display = "flex";
+  showOverlay();
   progressItems.innerHTML = "";
   progressSub.textContent = `Installing ${skills.length} skill${skills.length > 1 ? "s" : ""}…`;
   btnDone.style.display = "none";
+  orbIcon.textContent = "⚡";
 
-  // Build progress rows
-  const itemMap = {};
-  skills.forEach((skill) => {
-    const row = document.createElement("div");
-    row.className = "progress-item";
-    row.innerHTML = `
-      <div class="progress-item-icon">${skill.icon || "🔧"}</div>
-      <div class="progress-item-name">${skill.display_name || skill.name}</div>
-      <div class="status-indicator pending" id="ind-${skill.name}"></div>
-      <div class="progress-item-status status-pending" id="st-${skill.name}">pending</div>
-    `;
-    progressItems.appendChild(row);
-    itemMap[skill.name] = row;
-  });
+  skills.forEach(skill => appendProgressRow(skill, "pending"));
+  attachProgressListener(skills);
 
-  // Listen for progress messages from service worker
-  const progressListener = (message) => {
-    if (message.type === "PROGRESS") {
-      const ind = document.getElementById(`ind-${message.skill}`);
-      const st  = document.getElementById(`st-${message.skill}`);
-      if (ind && st) {
-        ind.className = `status-indicator ${message.status}`;
-        st.className  = `progress-item-status status-${message.status}`;
-        st.textContent = message.status;
-      }
-    }
-    if (message.type === "STATUS") {
-      progressSub.textContent = message.message;
-    }
-    if (message.type === "NOT_LOGGED_IN") {
-      showNotLoggedIn();
-    }
-    if (message.type === "DONE") {
-      progressSub.textContent = message.hadErrors ? "Finished with some errors." : "All done!";
-      btnDone.style.display = "block";
-      skills.forEach((s) => installedNames.add(s.name));
-      selectedNames.clear();
-      updateFooter();
-      chrome.runtime.onMessage.removeListener(progressListener);
-    }
-  };
-
-  chrome.runtime.onMessage.addListener(progressListener);
-
-  // Kick off install
   await chrome.runtime.sendMessage({ type: "INSTALL_SKILLS", skills });
 }
 
-// ── Events ─────────────────────────────────────────────────────────────────
-btnRefresh.addEventListener("click", loadRegistry);
-btnInstall.addEventListener("click", handleInstall);
-btnDone.addEventListener("click", () => {
-  overlay.style.display = "none";
-  renderSkills(); // refresh to show "installed" badges
-});
+// ── Progress helpers ───────────────────────────────────────────────────────
+function showOverlay() {
+  overlay.style.display = "flex";
+}
 
-searchEl.addEventListener("input", (e) => {
-  searchQuery = e.target.value;
-  renderSkills();
-});
+function appendProgressRow(skill, status = "pending") {
+  const existing = document.getElementById(`ind-${skill.name}`);
+  if (existing) { updateProgressRow(skill.name, status); return; }
 
-// ── Start ──────────────────────────────────────────────────────────────────
-init();
+  const row = document.createElement("div");
+  row.className = `progress-item status-${status}`;
+  row.id = `row-${skill.name}`;
+  row.innerHTML = `
+    <div class="progress-item-icon">${skill.icon || "🔧"}</div>
+    <div class="progress-item-name">${skill.display_name || skill.name}</div>
+    <div class="status-indicator ${status}" id="ind-${skill.name}"></div>
+    <div class="progress-item-status status-${status}" id="st-${skill.name}">${status}</div>
+  `;
+  progressItems.appendChild(row);
+}
 
-// ── URL Install ────────────────────────────────────────────────────────────
+function updateProgressRow(skillName, status) {
+  const ind = document.getElementById(`ind-${skillName}`);
+  const st  = document.getElementById(`st-${skillName}`);
+  const row = document.getElementById(`row-${skillName}`);
+  if (ind) ind.className = `status-indicator ${status}`;
+  if (st)  { st.className = `progress-item-status status-${status}`; st.textContent = status; }
+  if (row) row.className = `progress-item status-${status}`;
+}
 
+function attachProgressListener(skills) {
+  const listener = (message) => {
+    if (message.type === "PROGRESS") updateProgressRow(message.skill, message.status);
+    if (message.type === "STATUS")   progressSub.textContent = message.message;
+    if (message.type === "NOT_LOGGED_IN") showNotLoggedIn();
+    if (message.type === "DONE") {
+      orbIcon.textContent = message.hadErrors ? "⚠️" : "✅";
+      progressSub.textContent = message.hadErrors ? "Finished with some errors." : "All done!";
+      btnDone.style.display = "block";
+      if (!message.hadErrors) skills.forEach(s => installedNames.add(s.name));
+      selectedNames.clear();
+      updateFooter();
+      chrome.runtime.onMessage.removeListener(listener);
+    }
+  };
+  chrome.runtime.onMessage.addListener(listener);
+}
+
+// ── URL Install (#1 redesign, #4 multiple URLs) ────────────────────────────
 const urlPanel      = document.getElementById("url-panel");
-const urlInput      = document.getElementById("url-input");
+const urlInputsEl   = document.getElementById("url-inputs");
 const urlHint       = document.getElementById("url-hint");
 const btnUrl        = document.getElementById("btn-url");
+const btnUrlAdd     = document.getElementById("btn-url-add");
 const btnUrlInstall = document.getElementById("btn-url-install");
 
-// Toggle URL panel
 btnUrl.addEventListener("click", () => {
   const open = urlPanel.style.display !== "none";
   urlPanel.style.display = open ? "none" : "block";
   btnUrl.classList.toggle("active", !open);
-  if (!open) urlInput.focus();
+  if (!open) urlInputsEl.querySelector(".url-input-field")?.focus();
 });
 
-// Validate + preview URL as user types
-urlInput.addEventListener("input", () => {
-  const raw = urlInput.value.trim();
-  if (!raw) { setHint("", ""); return; }
+btnUrlAdd.addEventListener("click", addUrlRow);
 
-  const parsed = parseGitHubUrl(raw);
-  if (!parsed) {
-    setHint("Must be a GitHub URL to a .skill file or skill folder", "error");
-    return;
-  }
-  if (parsed.type === "file") {
-    setHint(`✓ Skill file: ${parsed.name}`, "ok");
-  } else if (parsed.type === "folder") {
-    setHint(`✓ Skill folder: ${parsed.name} — will fetch SKILL.md`, "ok");
-  }
-});
-
-urlInput.addEventListener("keydown", (e) => { if (e.key === "Enter") installFromUrl(); });
-btnUrlInstall.addEventListener("click", installFromUrl);
-
-async function installFromUrl() {
-  const raw = urlInput.value.trim();
-  if (!raw) return;
-
-  const parsed = parseGitHubUrl(raw);
-  if (!parsed) {
-    setHint("Invalid GitHub URL — paste a link to a .skill file or skill folder", "error");
-    return;
-  }
-
-  // Close panel
-  urlPanel.style.display = "none";
-  btnUrl.classList.remove("active");
-  urlInput.value = "";
-  setHint("", "");
-
-  // Show overlay
-  overlay.style.display = "flex";
-  progressItems.innerHTML = "";
-  btnDone.style.display = "none";
-
-  const skillName = parsed.name;
-
+function addUrlRow() {
   const row = document.createElement("div");
-  row.className = "progress-item";
+  row.className = "url-input-row";
   row.innerHTML = `
-    <div class="progress-item-icon">🔗</div>
-    <div class="progress-item-name">${skillName}</div>
-    <div class="status-indicator pending" id="ind-${skillName}"></div>
-    <div class="progress-item-status status-pending" id="st-${skillName}">pending</div>
+    <input type="text" class="url-input url-input-field" placeholder="https://github.com/user/repo/tree/main/skill" />
+    <button class="btn-url-add btn-url-remove" title="Remove">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+    </button>
   `;
-  progressItems.appendChild(row);
-
-  const updateStatus = (status, msg) => {
-    const ind = document.getElementById(`ind-${skillName}`);
-    const st  = document.getElementById(`st-${skillName}`);
-    if (ind) ind.className = `status-indicator ${status}`;
-    if (st)  { st.className = `progress-item-status status-${status}`; st.textContent = status; }
-    if (msg) progressSub.textContent = msg;
-  };
-
-  try {
-    let skill;
-
-    if (parsed.type === "file") {
-      // Direct .skill file — pass straight to service worker
-      progressSub.textContent = "Downloading skill file…";
-      updateStatus("downloading");
-      skill = {
-        name: skillName,
-        display_name: skillName,
-        description: "Installed from URL",
-        icon: "🔗",
-        source: parsed.rawUrl,
-        tags: ["custom"],
-        author: "custom"
-      };
-
-      const progressListener = (message) => {
-        if (message.type === "PROGRESS") updateStatus(message.status);
-        if (message.type === "STATUS") progressSub.textContent = message.message;
-        if (message.type === "DONE") {
-          progressSub.textContent = "Done!";
-          btnDone.style.display = "block";
-          chrome.runtime.onMessage.removeListener(progressListener);
-        }
-      };
-      chrome.runtime.onMessage.addListener(progressListener);
-      await chrome.runtime.sendMessage({ type: "INSTALL_SKILLS", skills: [skill] });
-
-    } else if (parsed.type === "folder") {
-      // Skill folder — fetch files from GitHub API, zip them, install
-      progressSub.textContent = "Fetching skill folder from GitHub…";
-      updateStatus("downloading");
-
-      const zipBuffer = await fetchAndZipSkillFolder(parsed, (msg) => {
-        progressSub.textContent = msg;
-      });
-
-      updateStatus("installing", "Installing skill…");
-
-      // Send as a pre-zipped base64 buffer to service worker
-      await chrome.runtime.sendMessage({
-        type: "INSTALL_ZIPPED",
-        skillName,
-        zipBase64: arrayBufferToBase64(zipBuffer)
-      });
-
-      updateStatus("installed", "Done!");
-      btnDone.style.display = "block";
-    }
-
-  } catch (e) {
-    updateStatus("error");
-    progressSub.textContent = `Error: ${e.message}`;
-    btnDone.style.display = "block";
-  }
+  row.querySelector(".btn-url-remove").addEventListener("click", () => row.remove());
+  urlInputsEl.appendChild(row);
+  row.querySelector(".url-input-field").focus();
 }
 
-// Fetch all files in a GitHub skill folder and zip them using MiniZip
-async function fetchAndZipSkillFolder(parsed, onProgress) {
-  const { user, repo, branch, path } = parsed;
-  const apiUrl = `https://api.github.com/repos/${user}/${repo}/contents/${path}?ref=${branch}`;
+urlInputsEl.addEventListener("input", () => {
+  const filled = [...urlInputsEl.querySelectorAll(".url-input-field")].filter(i => i.value.trim());
+  if (!filled.length) { setHint("", ""); return; }
+  const allValid = filled.every(i => parseGitHubUrl(i.value.trim()));
+  allValid
+    ? setHint(`✓ ${filled.length} URL${filled.length > 1 ? "s" : ""} ready`, "ok")
+    : setHint("One or more URLs are invalid", "error");
+});
 
-  onProgress("Fetching file list from GitHub API…");
-  const res = await fetch(apiUrl);
-  if (!res.ok) throw new Error(`GitHub API error: HTTP ${res.status} — is the repo public?`);
-  const files = await res.json();
+btnUrlInstall.addEventListener("click", installFromUrls);
 
-  if (!Array.isArray(files)) throw new Error("Expected a folder — paste a folder URL, not a file URL");
+async function installFromUrls() {
+  const inputs = [...urlInputsEl.querySelectorAll(".url-input-field")]
+    .map(i => i.value.trim()).filter(Boolean);
+  if (!inputs.length) return;
 
-  const hasSKILLmd = files.some(f => f.name === "SKILL.md");
-  if (!hasSKILLmd) throw new Error("No SKILL.md found — is this a valid Claude skill folder?");
+  const parsedList = inputs.map(parseGitHubUrl).filter(Boolean);
+  if (!parsedList.length) { setHint("No valid GitHub URLs found", "error"); return; }
 
-  const zip = new window.MiniZip();
-  const folderName = parsed.name;
+  // Close panel and reset inputs
+  urlPanel.style.display = "none";
+  btnUrl.classList.remove("active");
+  resetUrlPanel();
+  setHint("", "");
 
-  // Download each file and add to zip
-  for (const file of files) {
-    if (file.type !== "file") continue;
-    onProgress(`Fetching ${file.name}…`);
-    const fileRes = await fetch(file.download_url);
-    if (!fileRes.ok) throw new Error(`Failed to fetch ${file.name}: HTTP ${fileRes.status}`);
-    const buf = await fileRes.arrayBuffer();
-    zip.add(`${folderName}/${file.name}`, buf);
+  showOverlay();
+  progressItems.innerHTML = "";
+  btnDone.style.display = "none";
+  orbIcon.textContent = "⚡";
+  progressSub.textContent = `Installing ${parsedList.length} skill${parsedList.length > 1 ? "s" : ""} from URL…`;
+
+  parsedList.forEach(p => appendProgressRow({ name: p.name, display_name: p.name, icon: "🔗" }, "pending"));
+
+  let anyError = false;
+
+  for (const p of parsedList) {
+    const skillName = p.name;
+    try {
+      if (p.type === "file") {
+        updateProgressRow(skillName, "downloading");
+        progressSub.textContent = `Downloading ${skillName}…`;
+
+        const skill = { name: skillName, display_name: skillName, description: "Installed from URL", icon: "🔗", source: p.rawUrl, tags: ["custom"], author: "custom" };
+
+        await new Promise((resolve) => {
+          const listener = (msg) => {
+            if (msg.type === "PROGRESS" && msg.skill === skillName) updateProgressRow(skillName, msg.status);
+            if (msg.type === "DONE") { chrome.runtime.onMessage.removeListener(listener); resolve(); }
+          };
+          chrome.runtime.onMessage.addListener(listener);
+          chrome.runtime.sendMessage({ type: "INSTALL_SKILLS", skills: [skill] });
+        });
+
+        await saveCustomSkill(skill);
+
+      } else if (p.type === "folder") {
+        updateProgressRow(skillName, "downloading");
+        const zipBuffer = await fetchAndZipSkillFolder(p, msg => { progressSub.textContent = msg; });
+        updateProgressRow(skillName, "installing");
+        progressSub.textContent = `Installing ${skillName}…`;
+        await chrome.runtime.sendMessage({ type: "INSTALL_ZIPPED", skillName, zipBase64: arrayBufferToBase64(zipBuffer) });
+        updateProgressRow(skillName, "installed");
+        await saveCustomSkill({ name: skillName, display_name: skillName, description: "Installed from GitHub folder", icon: "🔗", tags: ["custom"], author: "custom" });
+      }
+    } catch (e) {
+      console.error("[Skillman] URL install failed for", skillName, e.message);
+      updateProgressRow(skillName, "error");
+      progressSub.textContent = `Error: ${e.message}`;
+      anyError = true;
+    }
   }
 
-  onProgress("Packaging skill…");
-  return zip.generate();
+  orbIcon.textContent = anyError ? "⚠️" : "✅";
+  progressSub.textContent = anyError ? "Finished with some errors." : "All done!";
+  btnDone.style.display = "block";
+}
+
+function resetUrlPanel() {
+  urlInputsEl.innerHTML = `
+    <div class="url-input-row">
+      <input type="text" class="url-input url-input-field" placeholder="https://github.com/user/repo/tree/main/my-skill" />
+      <button class="btn-url-add" id="btn-url-add-new" title="Add another URL">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+      </button>
+    </div>
+  `;
+  document.getElementById("btn-url-add-new")?.addEventListener("click", addUrlRow);
+}
+
+async function saveCustomSkill(skill) {
+  const res = await chrome.storage.local.get("customSkills");
+  const existing = res.customSkills || [];
+  const updated = [...existing.filter(s => s.name !== skill.name), skill];
+  await chrome.storage.local.set({ customSkills: updated });
+  customSkills = updated;
+  installedNames.add(skill.name);
+}
+
+// ── GitHub folder fetch & zip (with subdirectory recursion #2) ────────────
+async function fetchAndZipSkillFolder(parsed, onProgress, zip = null, baseName = null) {
+  const { user, repo, branch, path } = parsed;
+  const isRoot = zip === null;
+
+  if (isRoot) {
+    zip = new window.MiniZip();
+    baseName = parsed.name;
+  }
+
+  const apiUrl = `https://api.github.com/repos/${user}/${repo}/contents/${path}?ref=${branch}`;
+  onProgress(`Fetching ${path.split("/").pop()}…`);
+
+  const res = await fetch(apiUrl);
+  if (!res.ok) throw new Error(`GitHub API error: HTTP ${res.status} — is the repo public?`);
+  const items = await res.json();
+  if (!Array.isArray(items)) throw new Error("Expected a folder — paste a folder URL");
+
+  if (isRoot && !items.some(f => f.name === "SKILL.md")) {
+    throw new Error("No SKILL.md found — is this a valid Claude skill folder?");
+  }
+
+  for (const item of items) {
+    if (item.type === "file") {
+      onProgress(`Fetching ${item.name}…`);
+      const fileRes = await fetch(item.download_url);
+      if (!fileRes.ok) throw new Error(`Failed to fetch ${item.name}`);
+      const buf = await fileRes.arrayBuffer();
+      const rootPath = parsed.path.substring(0, parsed.path.lastIndexOf("/") + 1);
+      const relativePath = item.path.startsWith(rootPath)
+        ? item.path.slice(rootPath.length)
+        : item.path.split("/").slice(-1)[0];
+      zip.add(`${baseName}/${relativePath}`, buf);
+    } else if (item.type === "dir") {
+      await fetchAndZipSkillFolder(
+        { user, repo, branch, path: item.path, name: parsed.name },
+        onProgress, zip, baseName
+      );
+    }
+  }
+
+  if (isRoot) {
+    onProgress("Packaging skill…");
+    return zip.generate();
+  }
 }
 
 function arrayBufferToBase64(buffer) {
@@ -472,12 +452,10 @@ function arrayBufferToBase64(buffer) {
   return btoa(binary);
 }
 
-// Parse any GitHub URL into a structured object
-// Returns: { type: "file"|"folder", name, rawUrl?, user, repo, branch, path }
+// ── Parse GitHub URL ───────────────────────────────────────────────────────
 function parseGitHubUrl(url) {
   url = url.trim();
 
-  // Already raw .skill URL
   if (url.startsWith("https://raw.githubusercontent.com/") && url.endsWith(".skill")) {
     const parts = url.replace("https://raw.githubusercontent.com/", "").split("/");
     const [user, repo, branch, ...pathParts] = parts;
@@ -485,34 +463,17 @@ function parseGitHubUrl(url) {
     return { type: "file", name, rawUrl: url, user, repo, branch, path: pathParts.join("/") };
   }
 
-  // GitHub blob .skill file: /blob/branch/path/to/file.skill
-  const blobMatch = url.match(
-    /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+\.skill)$/
-  );
+  const blobMatch = url.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+\.skill)$/);
   if (blobMatch) {
     const [, user, repo, branch, path] = blobMatch;
     const name = path.split("/").pop().replace(".skill", "");
-    const rawUrl = `https://raw.githubusercontent.com/${user}/${repo}/${branch}/${path}`;
-    return { type: "file", name, rawUrl, user, repo, branch, path };
+    return { type: "file", name, rawUrl: `https://raw.githubusercontent.com/${user}/${repo}/${branch}/${path}`, user, repo, branch, path };
   }
 
-  // GitHub tree folder: /tree/branch/path/to/folder
-  const treeMatch = url.match(
-    /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/tree\/([^/]+)\/(.+)$/
-  );
+  const treeMatch = url.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/tree\/([^/]+)\/(.+)$/);
   if (treeMatch) {
     const [, user, repo, branch, path] = treeMatch;
-    const name = path.split("/").pop();
-    return { type: "folder", name, user, repo, branch, path };
-  }
-
-  // GitHub folder without /tree/ (just /user/repo/path)
-  const plainMatch = url.match(
-    /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/([^/]+)\/([^/]+)\/(.+)$/
-  );
-  if (plainMatch) {
-    const [, user, repo, maybeBlob, branch, path] = plainMatch;
-    if (maybeBlob !== "blob" && maybeBlob !== "tree") return null;
+    return { type: "folder", name: path.split("/").pop(), user, repo, branch, path };
   }
 
   return null;
@@ -522,3 +483,12 @@ function setHint(text, type) {
   urlHint.textContent = text;
   urlHint.className = `url-hint ${type}`;
 }
+
+// ── Events ─────────────────────────────────────────────────────────────────
+btnRefresh.addEventListener("click", loadRegistry);
+btnInstall.addEventListener("click", handleInstall);
+btnDone.addEventListener("click", () => { overlay.style.display = "none"; renderSkills(); });
+searchEl.addEventListener("input", e => { searchQuery = e.target.value; renderSkills(); });
+
+// ── Start ──────────────────────────────────────────────────────────────────
+init();

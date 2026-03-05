@@ -39,21 +39,40 @@
       </div>
     </header>
 
-    <!-- URL install panel (hidden by default) -->
+    <!-- URL install panel -->
     <div class="url-panel" id="url-panel" style="display:none">
       <div class="url-panel-inner">
-        <div class="url-label">Paste a GitHub link to any <code>.skill</code> file</div>
-        <div class="url-input-row">
-          <input type="text" id="url-input" class="url-input" placeholder="https://github.com/user/repo/blob/main/my-skill.skill" />
-          <button class="btn-url-install" id="btn-url-install">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-              <polyline points="7 10 12 15 17 10"/>
-              <line x1="12" y1="15" x2="12" y2="3"/>
-            </svg>
-          </button>
+        <div class="url-panel-header">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+          </svg>
+          Install from GitHub
+        </div>
+        <div class="url-supported">
+          <span class="url-supported-tag">folder URL</span>
+          <span class="url-supported-tag">.skill file URL</span>
+          <span class="url-supported-tag">raw URL</span>
+        </div>
+        <div class="url-inputs" id="url-inputs">
+          <div class="url-input-row">
+            <input type="text" class="url-input url-input-field" placeholder="https://github.com/user/repo/tree/main/my-skill" />
+            <button class="btn-url-add" id="btn-url-add" title="Add another URL">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+            </button>
+          </div>
         </div>
         <div class="url-hint" id="url-hint"></div>
+        <button class="btn-url-install" id="btn-url-install">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Install from URL
+        </button>
       </div>
     </div>
 
@@ -78,7 +97,7 @@
       </div>
     </main>
 
-    <!-- Footer / install bar -->
+    <!-- Footer -->
     <footer class="footer">
       <div class="selection-info">
         <span id="selected-count">0 skills selected</span>
@@ -93,16 +112,25 @@
       </button>
     </footer>
 
-    <!-- Progress overlay -->
+    <!-- Progress overlay (#5 — full screen, no panel) -->
     <div class="overlay" id="overlay" style="display:none">
-      <div class="progress-panel">
-        <div class="progress-header">
-          <span class="progress-title">Installing skills</span>
-          <span class="progress-subtitle" id="progress-subtitle">Preparing…</span>
+      <div class="install-hero">
+        <div class="install-orb">
+          <span class="install-orb-icon" id="orb-icon">⚡</span>
         </div>
-        <div class="progress-items" id="progress-items"></div>
-        <button class="btn-done" id="btn-done" style="display:none">Done</button>
+        <div class="install-title">Installing skills</div>
+        <div class="install-status" id="progress-subtitle">Preparing…</div>
       </div>
+
+      <div class="bg-notice">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        Installing in the background — no tab switching
+      </div>
+
+      <div class="progress-items" id="progress-items"></div>
+      <button class="btn-done" id="btn-done" style="display:none">Done</button>
     </div>
 
   </div>
