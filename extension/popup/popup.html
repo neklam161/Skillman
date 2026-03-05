@@ -15,15 +15,19 @@
     <!-- Header -->
     <header class="header">
       <div class="logo">
-        <div class="logo-mark">
-          <span class="logo-s">S</span>
-        </div>
+        <div class="logo-mark"><span class="logo-s">S</span></div>
         <div class="logo-text">
           <span class="logo-name">skillman</span>
           <span class="logo-tag">for Claude</span>
         </div>
       </div>
       <div class="header-actions">
+        <button class="btn-icon" id="btn-url" title="Install from URL">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+          </svg>
+        </button>
         <button class="btn-icon" id="btn-refresh" title="Refresh registry">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
@@ -34,6 +38,24 @@
         </button>
       </div>
     </header>
+
+    <!-- URL install panel (hidden by default) -->
+    <div class="url-panel" id="url-panel" style="display:none">
+      <div class="url-panel-inner">
+        <div class="url-label">Paste a GitHub link to any <code>.skill</code> file</div>
+        <div class="url-input-row">
+          <input type="text" id="url-input" class="url-input" placeholder="https://github.com/user/repo/blob/main/my-skill.skill" />
+          <button class="btn-url-install" id="btn-url-install">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+          </button>
+        </div>
+        <div class="url-hint" id="url-hint"></div>
+      </div>
+    </div>
 
     <!-- Search + Filter -->
     <div class="toolbar">
@@ -57,8 +79,8 @@
     </main>
 
     <!-- Footer / install bar -->
-    <footer class="footer" id="footer">
-      <div class="selection-info" id="selection-info">
+    <footer class="footer">
+      <div class="selection-info">
         <span id="selected-count">0 skills selected</span>
       </div>
       <button class="btn-install" id="btn-install" disabled>
@@ -84,7 +106,6 @@
     </div>
 
   </div>
-
   <script src="popup.js"></script>
 </body>
 </html>

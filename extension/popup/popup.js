@@ -224,3 +224,128 @@ searchEl.addEventListener("input", (e) => {
 
 // ── Start ──────────────────────────────────────────────────────────────────
 init();
+
+// ── URL Install ────────────────────────────────────────────────────────────
+
+const urlPanel    = document.getElementById("url-panel");
+const urlInput    = document.getElementById("url-input");
+const urlHint     = document.getElementById("url-hint");
+const btnUrl      = document.getElementById("btn-url");
+const btnUrlInstall = document.getElementById("btn-url-install");
+
+// Toggle URL panel
+btnUrl.addEventListener("click", () => {
+  const open = urlPanel.style.display !== "none";
+  urlPanel.style.display = open ? "none" : "block";
+  btnUrl.classList.toggle("active", !open);
+  if (!open) urlInput.focus();
+});
+
+// Validate + preview URL as user types
+urlInput.addEventListener("input", () => {
+  const raw = urlInput.value.trim();
+  if (!raw) {
+    setHint("", "");
+    return;
+  }
+  const converted = githubBlobToRaw(raw);
+  if (converted) {
+    const filename = converted.split("/").pop();
+    setHint(`✓ ${filename}`, "ok");
+  } else if (raw.includes("github.com") || raw.includes("raw.githubusercontent.com")) {
+    setHint("Paste the full link to a .skill file", "info");
+  } else {
+    setHint("Must be a GitHub URL pointing to a .skill file", "error");
+  }
+});
+
+urlInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") installFromUrl();
+});
+
+btnUrlInstall.addEventListener("click", installFromUrl);
+
+async function installFromUrl() {
+  const raw = urlInput.value.trim();
+  if (!raw) return;
+
+  const downloadUrl = githubBlobToRaw(raw);
+  if (!downloadUrl) {
+    setHint("Invalid GitHub URL — paste a direct link to a .skill file", "error");
+    return;
+  }
+
+  const filename = downloadUrl.split("/").pop().replace(".skill", "");
+
+  const skill = {
+    name: filename,
+    display_name: filename,
+    description: `Installed from URL`,
+    icon: "🔗",
+    source: downloadUrl,
+    tags: ["custom"],
+    author: "custom"
+  };
+
+  urlPanel.style.display = "none";
+  btnUrl.classList.remove("active");
+  urlInput.value = "";
+  setHint("", "");
+
+  overlay.style.display = "flex";
+  progressItems.innerHTML = "";
+  progressSub.textContent = "Installing from URL…";
+  btnDone.style.display = "none";
+
+  const row = document.createElement("div");
+  row.className = "progress-item";
+  row.innerHTML = `
+    <div class="progress-item-icon">${skill.icon}</div>
+    <div class="progress-item-name">${skill.display_name}</div>
+    <div class="status-indicator pending" id="ind-${skill.name}"></div>
+    <div class="progress-item-status status-pending" id="st-${skill.name}">pending</div>
+  `;
+  progressItems.appendChild(row);
+
+  const progressListener = (message) => {
+    if (message.type === "PROGRESS") {
+      const ind = document.getElementById(`ind-${message.skill}`);
+      const st  = document.getElementById(`st-${message.skill}`);
+      if (ind && st) {
+        ind.className = `status-indicator ${message.status}`;
+        st.className  = `progress-item-status status-${message.status}`;
+        st.textContent = message.status;
+      }
+    }
+    if (message.type === "STATUS") progressSub.textContent = message.message;
+    if (message.type === "DONE") {
+      progressSub.textContent = "Done!";
+      btnDone.style.display = "block";
+      chrome.runtime.onMessage.removeListener(progressListener);
+    }
+  };
+
+  chrome.runtime.onMessage.addListener(progressListener);
+  await chrome.runtime.sendMessage({ type: "INSTALL_SKILLS", skills: [skill] });
+}
+
+function githubBlobToRaw(url) {
+  // Already a raw URL
+  if (url.startsWith("https://raw.githubusercontent.com/") && url.endsWith(".skill")) {
+    return url;
+  }
+  // GitHub blob URL
+  const match = url.match(
+    /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+\.skill)$/
+  );
+  if (match) {
+    const [, user, repo, branch, path] = match;
+    return `https://raw.githubusercontent.com/${user}/${repo}/${branch}/${path}`;
+  }
+  return null;
+}
+
+function setHint(text, type) {
+  urlHint.textContent = text;
+  urlHint.className = `url-hint ${type}`;
+}
