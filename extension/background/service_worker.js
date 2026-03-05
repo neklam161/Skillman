@@ -297,3 +297,67 @@ async function getInstalled() {
 function notifyPopup(message) {
   chrome.runtime.sendMessage(message).catch(() => {});
 }
+
+// ── INSTALL_ZIPPED handler ────────────────────────────────────────────────────
+// For folder-based installs — receives a pre-zipped base64 buffer from popup
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === "INSTALL_ZIPPED") {
+    handleInstallZipped(message.skillName, message.zipBase64)
+      .then(() => sendResponse({ ok: true }))
+      .catch((err) => {
+        console.error("[Skillman] INSTALL_ZIPPED error:", err);
+        sendResponse({ ok: false, error: err.message });
+      });
+    return true;
+  }
+});
+
+async function handleInstallZipped(skillName, zipBase64) {
+  console.log("[Skillman] Installing zipped skill:", skillName);
+
+  // Convert base64 to buffer
+  const binary = atob(zipBase64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  const buffer = bytes.buffer;
+
+  const skill = {
+    name: skillName,
+    display_name: skillName,
+    source: null, // already have buffer
+    icon: "🔗"
+  };
+
+  // Open claude.ai skills page
+  let claudeTab;
+  const tabs = await chrome.tabs.query({ url: "https://claude.ai/*" });
+  if (tabs.length > 0) {
+    claudeTab = tabs[0];
+    await chrome.tabs.update(claudeTab.id, { url: "https://claude.ai/customize/skills", active: true });
+  } else {
+    claudeTab = await chrome.tabs.create({ url: "https://claude.ai/customize/skills", active: true });
+  }
+
+  await waitForTabLoad(claudeTab.id);
+  await sleep(3000);
+
+  const base64 = bufferToBase64(buffer);
+
+  const results = await chrome.scripting.executeScript({
+    target: { tabId: claudeTab.id },
+    func: injectSkillUpload,
+    args: [skillName, base64],
+  });
+
+  console.log("[Skillman] INSTALL_ZIPPED result:", JSON.stringify(results));
+
+  // Save to storage
+  const existing = await getInstalled();
+  const updated = [
+    ...existing.filter(s => s.name !== skillName),
+    { name: skillName, installedAt: Date.now() }
+  ];
+  await chrome.storage.local.set({ installed: updated });
+  console.log("[Skillman] Saved zipped install to storage");
+}

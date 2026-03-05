@@ -227,10 +227,10 @@ init();
 
 // ── URL Install ────────────────────────────────────────────────────────────
 
-const urlPanel    = document.getElementById("url-panel");
-const urlInput    = document.getElementById("url-input");
-const urlHint     = document.getElementById("url-hint");
-const btnUrl      = document.getElementById("btn-url");
+const urlPanel      = document.getElementById("url-panel");
+const urlInput      = document.getElementById("url-input");
+const urlHint       = document.getElementById("url-hint");
+const btnUrl        = document.getElementById("btn-url");
 const btnUrlInstall = document.getElementById("btn-url-install");
 
 // Toggle URL panel
@@ -244,104 +244,212 @@ btnUrl.addEventListener("click", () => {
 // Validate + preview URL as user types
 urlInput.addEventListener("input", () => {
   const raw = urlInput.value.trim();
-  if (!raw) {
-    setHint("", "");
+  if (!raw) { setHint("", ""); return; }
+
+  const parsed = parseGitHubUrl(raw);
+  if (!parsed) {
+    setHint("Must be a GitHub URL to a .skill file or skill folder", "error");
     return;
   }
-  const converted = githubBlobToRaw(raw);
-  if (converted) {
-    const filename = converted.split("/").pop();
-    setHint(`✓ ${filename}`, "ok");
-  } else if (raw.includes("github.com") || raw.includes("raw.githubusercontent.com")) {
-    setHint("Paste the full link to a .skill file", "info");
-  } else {
-    setHint("Must be a GitHub URL pointing to a .skill file", "error");
+  if (parsed.type === "file") {
+    setHint(`✓ Skill file: ${parsed.name}`, "ok");
+  } else if (parsed.type === "folder") {
+    setHint(`✓ Skill folder: ${parsed.name} — will fetch SKILL.md`, "ok");
   }
 });
 
-urlInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") installFromUrl();
-});
-
+urlInput.addEventListener("keydown", (e) => { if (e.key === "Enter") installFromUrl(); });
 btnUrlInstall.addEventListener("click", installFromUrl);
 
 async function installFromUrl() {
   const raw = urlInput.value.trim();
   if (!raw) return;
 
-  const downloadUrl = githubBlobToRaw(raw);
-  if (!downloadUrl) {
-    setHint("Invalid GitHub URL — paste a direct link to a .skill file", "error");
+  const parsed = parseGitHubUrl(raw);
+  if (!parsed) {
+    setHint("Invalid GitHub URL — paste a link to a .skill file or skill folder", "error");
     return;
   }
 
-  const filename = downloadUrl.split("/").pop().replace(".skill", "");
-
-  const skill = {
-    name: filename,
-    display_name: filename,
-    description: `Installed from URL`,
-    icon: "🔗",
-    source: downloadUrl,
-    tags: ["custom"],
-    author: "custom"
-  };
-
+  // Close panel
   urlPanel.style.display = "none";
   btnUrl.classList.remove("active");
   urlInput.value = "";
   setHint("", "");
 
+  // Show overlay
   overlay.style.display = "flex";
   progressItems.innerHTML = "";
-  progressSub.textContent = "Installing from URL…";
   btnDone.style.display = "none";
+
+  const skillName = parsed.name;
 
   const row = document.createElement("div");
   row.className = "progress-item";
   row.innerHTML = `
-    <div class="progress-item-icon">${skill.icon}</div>
-    <div class="progress-item-name">${skill.display_name}</div>
-    <div class="status-indicator pending" id="ind-${skill.name}"></div>
-    <div class="progress-item-status status-pending" id="st-${skill.name}">pending</div>
+    <div class="progress-item-icon">🔗</div>
+    <div class="progress-item-name">${skillName}</div>
+    <div class="status-indicator pending" id="ind-${skillName}"></div>
+    <div class="progress-item-status status-pending" id="st-${skillName}">pending</div>
   `;
   progressItems.appendChild(row);
 
-  const progressListener = (message) => {
-    if (message.type === "PROGRESS") {
-      const ind = document.getElementById(`ind-${message.skill}`);
-      const st  = document.getElementById(`st-${message.skill}`);
-      if (ind && st) {
-        ind.className = `status-indicator ${message.status}`;
-        st.className  = `progress-item-status status-${message.status}`;
-        st.textContent = message.status;
-      }
-    }
-    if (message.type === "STATUS") progressSub.textContent = message.message;
-    if (message.type === "DONE") {
-      progressSub.textContent = "Done!";
-      btnDone.style.display = "block";
-      chrome.runtime.onMessage.removeListener(progressListener);
-    }
+  const updateStatus = (status, msg) => {
+    const ind = document.getElementById(`ind-${skillName}`);
+    const st  = document.getElementById(`st-${skillName}`);
+    if (ind) ind.className = `status-indicator ${status}`;
+    if (st)  { st.className = `progress-item-status status-${status}`; st.textContent = status; }
+    if (msg) progressSub.textContent = msg;
   };
 
-  chrome.runtime.onMessage.addListener(progressListener);
-  await chrome.runtime.sendMessage({ type: "INSTALL_SKILLS", skills: [skill] });
+  try {
+    let skill;
+
+    if (parsed.type === "file") {
+      progressSub.textContent = "Downloading skill file…";
+      updateStatus("downloading");
+      skill = {
+        name: skillName,
+        display_name: skillName,
+        description: "Installed from URL",
+        icon: "🔗",
+        source: parsed.rawUrl,
+        tags: ["custom"],
+        author: "custom"
+      };
+
+      const progressListener = (message) => {
+        if (message.type === "PROGRESS") updateStatus(message.status);
+        if (message.type === "STATUS") progressSub.textContent = message.message;
+        if (message.type === "DONE") {
+          progressSub.textContent = "Done!";
+          btnDone.style.display = "block";
+          chrome.runtime.onMessage.removeListener(progressListener);
+        }
+      };
+      chrome.runtime.onMessage.addListener(progressListener);
+      await chrome.runtime.sendMessage({ type: "INSTALL_SKILLS", skills: [skill] });
+
+    } else if (parsed.type === "folder") {
+      // Skill folder — fetch files from GitHub API, zip them, install
+      progressSub.textContent = "Fetching skill folder from GitHub…";
+      updateStatus("downloading");
+
+      const zipBuffer = await fetchAndZipSkillFolder(parsed, (msg) => {
+        progressSub.textContent = msg;
+      });
+
+      updateStatus("installing", "Installing skill…");
+
+      await chrome.runtime.sendMessage({
+        type: "INSTALL_ZIPPED",
+        skillName,
+        zipBase64: arrayBufferToBase64(zipBuffer)
+      });
+
+      updateStatus("installed", "Done!");
+      btnDone.style.display = "block";
+    }
+
+  } catch (e) {
+    updateStatus("error");
+    progressSub.textContent = `Error: ${e.message}`;
+    btnDone.style.display = "block";
+  }
 }
 
-function githubBlobToRaw(url) {
-  // Already a raw URL
-  if (url.startsWith("https://raw.githubusercontent.com/") && url.endsWith(".skill")) {
-    return url;
+async function fetchAndZipSkillFolder(parsed, onProgress) {
+  const { user, repo, branch, path } = parsed;
+  const apiUrl = `https://api.github.com/repos/${user}/${repo}/contents/${path}?ref=${branch}`;
+
+  onProgress("Fetching file list from GitHub API…");
+  const res = await fetch(apiUrl);
+  if (!res.ok) throw new Error(`GitHub API error: HTTP ${res.status}`);
+  const files = await res.json();
+
+  if (!Array.isArray(files)) throw new Error("Expected a folder, got a single file");
+
+  const hasSKILLmd = files.some(f => f.name === "SKILL.md");
+  if (!hasSKILLmd) throw new Error("No SKILL.md found in this folder — is this a valid skill?");
+
+  // Dynamically load JSZip from CDN
+  if (!window.JSZip) {
+    onProgress("Loading zip library…");
+    await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js");
   }
-  // GitHub blob URL
-  const match = url.match(
+
+  const zip = new window.JSZip();
+  const folderName = parsed.name;
+  const folder = zip.folder(folderName);
+
+  for (const file of files) {
+    if (file.type !== "file") continue;
+    onProgress(`Fetching ${file.name}…`);
+    const fileRes = await fetch(file.download_url);
+    if (!fileRes.ok) throw new Error(`Failed to fetch ${file.name}`);
+    const buf = await fileRes.arrayBuffer();
+    folder.file(file.name, buf);
+  }
+
+  onProgress("Packaging skill…");
+  return await zip.generateAsync({ type: "arraybuffer" });
+}
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error(`Failed to load ${src}`));
+    document.head.appendChild(s);
+  });
+}
+
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+function parseGitHubUrl(url) {
+  url = url.trim();
+
+  // Already raw .skill URL
+  if (url.startsWith("https://raw.githubusercontent.com/") && url.endsWith(".skill")) {
+    const parts = url.replace("https://raw.githubusercontent.com/", "").split("/");
+    const [user, repo, branch, ...pathParts] = parts;
+    const name = pathParts[pathParts.length - 1].replace(".skill", "");
+    return { type: "file", name, rawUrl: url, user, repo, branch, path: pathParts.join("/") };
+  }
+
+  const blobMatch = url.match(
     /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+\.skill)$/
   );
-  if (match) {
-    const [, user, repo, branch, path] = match;
-    return `https://raw.githubusercontent.com/${user}/${repo}/${branch}/${path}`;
+  if (blobMatch) {
+    const [, user, repo, branch, path] = blobMatch;
+    const name = path.split("/").pop().replace(".skill", "");
+    const rawUrl = `https://raw.githubusercontent.com/${user}/${repo}/${branch}/${path}`;
+    return { type: "file", name, rawUrl, user, repo, branch, path };
   }
+
+  const treeMatch = url.match(
+    /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/tree\/([^/]+)\/(.+)$/
+  );
+  if (treeMatch) {
+    const [, user, repo, branch, path] = treeMatch;
+    const name = path.split("/").pop();
+    return { type: "folder", name, user, repo, branch, path };
+  }
+
+  const plainMatch = url.match(
+    /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/([^/]+)\/([^/]+)\/(.+)$/
+  );
+  if (plainMatch) {
+    const [, user, repo, maybeBlob, branch, path] = plainMatch;
+    if (maybeBlob !== "blob" && maybeBlob !== "tree") return null;
+  }
+
   return null;
 }
 
