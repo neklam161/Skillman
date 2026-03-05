@@ -306,6 +306,7 @@ async function installFromUrl() {
     let skill;
 
     if (parsed.type === "file") {
+      // Direct .skill file — pass straight to service worker
       progressSub.textContent = "Downloading skill file…";
       updateStatus("downloading");
       skill = {
@@ -341,6 +342,7 @@ async function installFromUrl() {
 
       updateStatus("installing", "Installing skill…");
 
+      // Send as a pre-zipped base64 buffer to service worker
       await chrome.runtime.sendMessage({
         type: "INSTALL_ZIPPED",
         skillName,
@@ -358,51 +360,36 @@ async function installFromUrl() {
   }
 }
 
+// Fetch all files in a GitHub skill folder and zip them using MiniZip
 async function fetchAndZipSkillFolder(parsed, onProgress) {
   const { user, repo, branch, path } = parsed;
   const apiUrl = `https://api.github.com/repos/${user}/${repo}/contents/${path}?ref=${branch}`;
 
   onProgress("Fetching file list from GitHub API…");
   const res = await fetch(apiUrl);
-  if (!res.ok) throw new Error(`GitHub API error: HTTP ${res.status}`);
+  if (!res.ok) throw new Error(`GitHub API error: HTTP ${res.status} — is the repo public?`);
   const files = await res.json();
 
-  if (!Array.isArray(files)) throw new Error("Expected a folder, got a single file");
+  if (!Array.isArray(files)) throw new Error("Expected a folder — paste a folder URL, not a file URL");
 
   const hasSKILLmd = files.some(f => f.name === "SKILL.md");
-  if (!hasSKILLmd) throw new Error("No SKILL.md found in this folder — is this a valid skill?");
+  if (!hasSKILLmd) throw new Error("No SKILL.md found — is this a valid Claude skill folder?");
 
-  // Dynamically load JSZip from CDN
-  if (!window.JSZip) {
-    onProgress("Loading zip library…");
-    await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js");
-  }
-
-  const zip = new window.JSZip();
+  const zip = new window.MiniZip();
   const folderName = parsed.name;
-  const folder = zip.folder(folderName);
 
+  // Download each file and add to zip
   for (const file of files) {
     if (file.type !== "file") continue;
     onProgress(`Fetching ${file.name}…`);
     const fileRes = await fetch(file.download_url);
-    if (!fileRes.ok) throw new Error(`Failed to fetch ${file.name}`);
+    if (!fileRes.ok) throw new Error(`Failed to fetch ${file.name}: HTTP ${fileRes.status}`);
     const buf = await fileRes.arrayBuffer();
-    folder.file(file.name, buf);
+    zip.add(`${folderName}/${file.name}`, buf);
   }
 
   onProgress("Packaging skill…");
-  return await zip.generateAsync({ type: "arraybuffer" });
-}
-
-function loadScript(src) {
-  return new Promise((resolve, reject) => {
-    const s = document.createElement("script");
-    s.src = src;
-    s.onload = resolve;
-    s.onerror = () => reject(new Error(`Failed to load ${src}`));
-    document.head.appendChild(s);
-  });
+  return zip.generate();
 }
 
 function arrayBufferToBase64(buffer) {
@@ -412,6 +399,8 @@ function arrayBufferToBase64(buffer) {
   return btoa(binary);
 }
 
+// Parse any GitHub URL into a structured object
+// Returns: { type: "file"|"folder", name, rawUrl?, user, repo, branch, path }
 function parseGitHubUrl(url) {
   url = url.trim();
 
@@ -423,6 +412,7 @@ function parseGitHubUrl(url) {
     return { type: "file", name, rawUrl: url, user, repo, branch, path: pathParts.join("/") };
   }
 
+  // GitHub blob .skill file: /blob/branch/path/to/file.skill
   const blobMatch = url.match(
     /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+\.skill)$/
   );
@@ -433,6 +423,7 @@ function parseGitHubUrl(url) {
     return { type: "file", name, rawUrl, user, repo, branch, path };
   }
 
+  // GitHub tree folder: /tree/branch/path/to/folder
   const treeMatch = url.match(
     /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/tree\/([^/]+)\/(.+)$/
   );
@@ -442,6 +433,7 @@ function parseGitHubUrl(url) {
     return { type: "folder", name, user, repo, branch, path };
   }
 
+  // GitHub folder without /tree/ (just /user/repo/path)
   const plainMatch = url.match(
     /^https:\/\/github\.com\/([^/]+)\/([^/]+)\/([^/]+)\/([^/]+)\/(.+)$/
   );
