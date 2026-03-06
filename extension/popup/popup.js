@@ -325,10 +325,15 @@ async function installFromUrls() {
 
         const skill = { name: skillName, display_name: skillName, description: "Installed from URL", icon: "🔗", source: p.rawUrl, tags: ["custom"], author: "custom" };
 
-        await new Promise((resolve) => {
+        await new Promise((resolve, reject) => {
           const listener = (msg) => {
             if (msg.type === "PROGRESS" && msg.skill === skillName) updateProgressRow(skillName, msg.status);
-            if (msg.type === "DONE") { chrome.runtime.onMessage.removeListener(listener); resolve(); }
+            if (msg.type === "NOT_LOGGED_IN") { chrome.runtime.onMessage.removeListener(listener); reject(new Error("Not logged in to Claude — please log in and try again")); }
+            if (msg.type === "DONE") {
+              chrome.runtime.onMessage.removeListener(listener);
+              if (msg.hadErrors) reject(new Error("Install failed — check you are logged in to Claude"));
+              else resolve();
+            }
           };
           chrome.runtime.onMessage.addListener(listener);
           chrome.runtime.sendMessage({ type: "INSTALL_SKILLS", skills: [skill] });
@@ -341,7 +346,8 @@ async function installFromUrls() {
         const zipBuffer = await fetchAndZipSkillFolder(p, msg => { progressSub.textContent = msg; });
         updateProgressRow(skillName, "installing");
         progressSub.textContent = `Installing ${skillName}…`;
-        await chrome.runtime.sendMessage({ type: "INSTALL_ZIPPED", skillName, zipBase64: arrayBufferToBase64(zipBuffer) });
+        const zipRes = await chrome.runtime.sendMessage({ type: "INSTALL_ZIPPED", skillName, zipBase64: arrayBufferToBase64(zipBuffer) });
+        if (!zipRes?.ok) throw new Error(zipRes?.error || "Install failed");
         updateProgressRow(skillName, "installed");
         await saveCustomSkill({ name: skillName, display_name: skillName, description: "Installed from GitHub folder", icon: "🔗", tags: ["custom"], author: "custom" });
       }
