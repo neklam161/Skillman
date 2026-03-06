@@ -54,16 +54,10 @@
           <span class="url-supported-tag">.skill file URL</span>
           <span class="url-supported-tag">raw URL</span>
         </div>
-        <div class="url-inputs" id="url-inputs">
-          <div class="url-input-row">
-            <input type="text" class="url-input url-input-field" placeholder="https://github.com/user/repo/tree/main/my-skill" />
-            <button class="btn-url-add" id="btn-url-add" title="Add another URL">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-              </svg>
-            </button>
-          </div>
-        </div>
+        <textarea id="url-textarea" class="url-textarea" placeholder="Paste one or more GitHub URLs, one per line:
+
+https://github.com/user/repo/tree/main/skill-one
+https://github.com/user/repo/tree/main/skill-two" rows="4"></textarea>
         <div class="url-hint" id="url-hint"></div>
         <button class="btn-url-install" id="btn-url-install">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">

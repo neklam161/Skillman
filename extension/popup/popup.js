@@ -267,60 +267,45 @@ function attachProgressListener(skills) {
 
 // ── URL Install (#1 redesign, #4 multiple URLs) ────────────────────────────
 const urlPanel      = document.getElementById("url-panel");
-const urlInputsEl   = document.getElementById("url-inputs");
+const urlTextarea   = document.getElementById("url-textarea");
 const urlHint       = document.getElementById("url-hint");
 const btnUrl        = document.getElementById("btn-url");
-const btnUrlAdd     = document.getElementById("btn-url-add");
 const btnUrlInstall = document.getElementById("btn-url-install");
 
 btnUrl.addEventListener("click", () => {
   const open = urlPanel.style.display !== "none";
   urlPanel.style.display = open ? "none" : "block";
   btnUrl.classList.toggle("active", !open);
-  if (!open) urlInputsEl.querySelector(".url-input-field")?.focus();
+  if (!open) urlTextarea?.focus();
 });
 
-btnUrlAdd.addEventListener("click", addUrlRow);
-
-function addUrlRow() {
-  const row = document.createElement("div");
-  row.className = "url-input-row";
-  row.innerHTML = `
-    <input type="text" class="url-input url-input-field" placeholder="https://github.com/user/repo/tree/main/skill" />
-    <button class="btn-url-add btn-url-remove" title="Remove">
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="5" y1="12" x2="19" y2="12"/>
-      </svg>
-    </button>
-  `;
-  row.querySelector(".btn-url-remove").addEventListener("click", () => row.remove());
-  urlInputsEl.appendChild(row);
-  row.querySelector(".url-input-field").focus();
-}
-
-urlInputsEl.addEventListener("input", () => {
-  const filled = [...urlInputsEl.querySelectorAll(".url-input-field")].filter(i => i.value.trim());
-  if (!filled.length) { setHint("", ""); return; }
-  const allValid = filled.every(i => parseGitHubUrl(i.value.trim()));
-  allValid
-    ? setHint(`✓ ${filled.length} URL${filled.length > 1 ? "s" : ""} ready`, "ok")
-    : setHint("One or more URLs are invalid", "error");
+urlTextarea.addEventListener("input", () => {
+  const lines = urlTextarea.value.split("
+").map(l => l.trim()).filter(Boolean);
+  if (!lines.length) { setHint("", ""); return; }
+  const valid = lines.filter(l => parseGitHubUrl(l));
+  const invalid = lines.length - valid.length;
+  if (invalid === 0) {
+    setHint(`✓ ${valid.length} URL${valid.length > 1 ? "s" : ""} ready`, "ok");
+  } else {
+    setHint(`${valid.length} valid, ${invalid} invalid`, invalid === lines.length ? "error" : "info");
+  }
 });
 
 btnUrlInstall.addEventListener("click", installFromUrls);
 
 async function installFromUrls() {
-  const inputs = [...urlInputsEl.querySelectorAll(".url-input-field")]
-    .map(i => i.value.trim()).filter(Boolean);
-  if (!inputs.length) return;
+  const lines = urlTextarea.value.split("
+").map(l => l.trim()).filter(Boolean);
+  if (!lines.length) return;
 
-  const parsedList = inputs.map(parseGitHubUrl).filter(Boolean);
+  const parsedList = lines.map(parseGitHubUrl).filter(Boolean);
   if (!parsedList.length) { setHint("No valid GitHub URLs found", "error"); return; }
 
-  // Close panel and reset inputs
+  // Close panel and clear textarea
   urlPanel.style.display = "none";
   btnUrl.classList.remove("active");
-  resetUrlPanel();
+  urlTextarea.value = "";
   setHint("", "");
 
   showOverlay();
@@ -375,19 +360,7 @@ async function installFromUrls() {
   btnDone.style.display = "block";
 }
 
-function resetUrlPanel() {
-  urlInputsEl.innerHTML = `
-    <div class="url-input-row">
-      <input type="text" class="url-input url-input-field" placeholder="https://github.com/user/repo/tree/main/my-skill" />
-      <button class="btn-url-add" id="btn-url-add-new" title="Add another URL">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-        </svg>
-      </button>
-    </div>
-  `;
-  document.getElementById("btn-url-add-new")?.addEventListener("click", addUrlRow);
-}
+
 
 async function saveCustomSkill(skill) {
   const res = await chrome.storage.local.get("customSkills");

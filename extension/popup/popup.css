@@ -969,3 +969,23 @@ html, body {
 .btn-url-install:hover { background: var(--accent-2); }
 
 /* remove old conflicting btn-url-install from previous append */
+
+/* ── URL textarea ──────────────────────────────────────────────────────────── */
+.url-textarea {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  line-height: 1.6;
+  padding: 8px 10px;
+  outline: none;
+  resize: none;
+  transition: border-color 0.15s ease;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border2) transparent;
+}
+.url-textarea::placeholder { color: var(--text-3); }
+.url-textarea:focus { border-color: var(--accent); }
