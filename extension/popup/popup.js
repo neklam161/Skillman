@@ -397,10 +397,12 @@ async function fetchAndZipSkillFolder(parsed, onProgress, zip = null, baseName =
       const fileRes = await fetch(item.download_url);
       if (!fileRes.ok) throw new Error(`Failed to fetch ${item.name}`);
       const buf = await fileRes.arrayBuffer();
-      const rootPath = parsed.path.substring(0, parsed.path.lastIndexOf("/") + 1);
-      const relativePath = item.path.startsWith(rootPath)
-        ? item.path.slice(rootPath.length)
-        : item.path.split("/").slice(-1)[0];
+      // Strip the root folder path to get path relative to skill root
+      // e.g. item.path = "tailored-resume-generator/SKILL.md" -> relativePath = "SKILL.md"
+      const rootPrefix = parsed.path.endsWith("/") ? parsed.path : parsed.path + "/";
+      const relativePath = item.path.startsWith(rootPrefix)
+        ? item.path.slice(rootPrefix.length)
+        : item.name;
       zip.add(`${baseName}/${relativePath}`, buf);
     } else if (item.type === "dir") {
       await fetchAndZipSkillFolder(
