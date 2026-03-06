@@ -280,8 +280,7 @@ btnUrl.addEventListener("click", () => {
 });
 
 urlTextarea.addEventListener("input", () => {
-  const lines = urlTextarea.value.split("
-").map(l => l.trim()).filter(Boolean);
+  const lines = urlTextarea.value.split('\n').map(l => l.trim()).filter(Boolean);
   if (!lines.length) { setHint("", ""); return; }
   const valid = lines.filter(l => parseGitHubUrl(l));
   const invalid = lines.length - valid.length;
@@ -295,8 +294,7 @@ urlTextarea.addEventListener("input", () => {
 btnUrlInstall.addEventListener("click", installFromUrls);
 
 async function installFromUrls() {
-  const lines = urlTextarea.value.split("
-").map(l => l.trim()).filter(Boolean);
+  const lines = urlTextarea.value.split('\n').map(l => l.trim()).filter(Boolean);
   if (!lines.length) return;
 
   const parsedList = lines.map(parseGitHubUrl).filter(Boolean);
