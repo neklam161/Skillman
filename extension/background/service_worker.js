@@ -175,17 +175,28 @@ async function handleInstall(skills) {
 
   let claudeTab;
   try {
-    const tabs = await chrome.tabs.query({ url: "https://claude.ai/*" });
-    if (tabs.length > 0) {
-      claudeTab = tabs[0];
-      await chrome.tabs.update(claudeTab.id, {
-        url: "https://claude.ai/customize/skills",
-        active: true,
-      });
-    } else {
+    // Check if already on the skills page — skip navigation to avoid stealing focus
+    const skillsTabs = await chrome.tabs.query({ url: "https://claude.ai/customize/skills" });
+    const anyTabs    = await chrome.tabs.query({ url: "https://claude.ai/*" });
+
+    if (skillsTabs.length > 0) {
+      // Already on the right page — use it without navigating (no focus steal)
+      claudeTab = skillsTabs[0];
+      console.log(`[Skillman] Already on skills page, tab ${claudeTab.id}`);
+    } else if (anyTabs.length > 0) {
+      // Claude is open but on a different page — open a NEW background tab
+      // Using create instead of update avoids Chrome switching focus
       claudeTab = await chrome.tabs.create({
         url: "https://claude.ai/customize/skills",
-        active: true,
+        active: false,
+        index: anyTabs[0].index + 1, // place next to existing claude tab
+        windowId: anyTabs[0].windowId,
+      });
+    } else {
+      // No claude tab at all — create one in background
+      claudeTab = await chrome.tabs.create({
+        url: "https://claude.ai/customize/skills",
+        active: false,
       });
     }
     console.log(`[Skillman] Using tab ID: ${claudeTab.id}`);
@@ -306,14 +317,21 @@ async function handleInstallZipped(skillName, zipBase64) {
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   const buffer = bytes.buffer;
 
-  // Open claude.ai tab
+  // Open claude.ai tab without stealing focus
   let claudeTab;
-  const tabs = await chrome.tabs.query({ url: "https://claude.ai/*" });
-  if (tabs.length > 0) {
-    claudeTab = tabs[0];
-    await chrome.tabs.update(claudeTab.id, { url: "https://claude.ai/customize/skills", active: true });
+  const skillsTabs = await chrome.tabs.query({ url: "https://claude.ai/customize/skills" });
+  const anyTabs    = await chrome.tabs.query({ url: "https://claude.ai/*" });
+  if (skillsTabs.length > 0) {
+    claudeTab = skillsTabs[0];
+  } else if (anyTabs.length > 0) {
+    claudeTab = await chrome.tabs.create({
+      url: "https://claude.ai/customize/skills",
+      active: false,
+      index: anyTabs[0].index + 1,
+      windowId: anyTabs[0].windowId,
+    });
   } else {
-    claudeTab = await chrome.tabs.create({ url: "https://claude.ai/customize/skills", active: true });
+    claudeTab = await chrome.tabs.create({ url: "https://claude.ai/customize/skills", active: false });
   }
 
   // Watch for tab close
