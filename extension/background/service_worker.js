@@ -180,12 +180,12 @@ async function handleInstall(skills) {
       claudeTab = tabs[0];
       await chrome.tabs.update(claudeTab.id, {
         url: "https://claude.ai/customize/skills",
-        active: false,  // #5 open in background
+        active: true,
       });
     } else {
       claudeTab = await chrome.tabs.create({
         url: "https://claude.ai/customize/skills",
-        active: false,  // #5 open in background
+        active: true,
       });
     }
     console.log(`[Skillman] Using tab ID: ${claudeTab.id}`);
@@ -311,9 +311,9 @@ async function handleInstallZipped(skillName, zipBase64) {
   const tabs = await chrome.tabs.query({ url: "https://claude.ai/*" });
   if (tabs.length > 0) {
     claudeTab = tabs[0];
-    await chrome.tabs.update(claudeTab.id, { url: "https://claude.ai/customize/skills", active: false });  // #5 background
+    await chrome.tabs.update(claudeTab.id, { url: "https://claude.ai/customize/skills", active: true });
   } else {
-    claudeTab = await chrome.tabs.create({ url: "https://claude.ai/customize/skills", active: false });  // #5 background
+    claudeTab = await chrome.tabs.create({ url: "https://claude.ai/customize/skills", active: true });
   }
 
   // Watch for tab close
