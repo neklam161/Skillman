@@ -106,26 +106,43 @@ https://github.com/user/repo/tree/main/skill-two" rows="4"></textarea>
       </button>
     </footer>
 
-    <!-- Progress overlay (#5 — full screen, no panel) -->
+    <!-- ── Overlay — blurred dim + centered card ── -->
     <div class="overlay" id="overlay" style="display:none">
-      <div class="install-hero">
+
+      <!-- Blurred backdrop -->
+      <div class="overlay-dim"></div>
+
+      <!-- Centered card -->
+      <div class="overlay-content">
+
+        <!-- Animated orb -->
         <div class="install-orb">
+          <div class="orb-ring orb-ring-1"></div>
+          <div class="orb-ring orb-ring-2"></div>
           <span class="install-orb-icon" id="orb-icon">⚡</span>
         </div>
+
         <div class="install-title">Installing skills</div>
+
+        <!-- Background notice pill -->
+        <div class="bg-notice">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          Installing in the background — no tab switching
+        </div>
+
         <div class="install-status" id="progress-subtitle">Preparing…</div>
-      </div>
 
-      <div class="bg-notice">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-        </svg>
-        Installing in the background — no tab switching
-      </div>
+        <!-- Per-skill progress rows -->
+        <div class="progress-items" id="progress-items"></div>
 
-      <div class="progress-items" id="progress-items"></div>
-      <button class="btn-done" id="btn-done" style="display:none">Done</button>
-    </div>
+        <button class="btn-done" id="btn-done" style="display:none">Done</button>
+
+      </div><!-- /.overlay-content -->
+    </div><!-- /.overlay -->
 
   </div>
   <script src="minizip.js"></script>
