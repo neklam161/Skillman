@@ -4,9 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Skillman</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet" />
+  <!-- FIX #1: Fonts are now bundled locally — no external requests, CSP-safe -->
+  <link rel="stylesheet" href="../assets/fonts/fonts.css" />
   <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
@@ -106,25 +105,16 @@ https://github.com/user/repo/tree/main/skill-two" rows="4"></textarea>
       </button>
     </footer>
 
-    <!-- ── Overlay — blurred dim + centered card ── -->
+    <!-- Overlay — blurred dim + centered card -->
     <div class="overlay" id="overlay" style="display:none">
-
-      <!-- Blurred backdrop -->
       <div class="overlay-dim"></div>
-
-      <!-- Centered card -->
       <div class="overlay-content">
-
-        <!-- Animated orb -->
         <div class="install-orb">
           <div class="orb-ring orb-ring-1"></div>
           <div class="orb-ring orb-ring-2"></div>
           <span class="install-orb-icon" id="orb-icon">⚡</span>
         </div>
-
         <div class="install-title">Installing skills</div>
-
-        <!-- Background notice pill -->
         <div class="bg-notice">
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="10"/>
@@ -133,16 +123,11 @@ https://github.com/user/repo/tree/main/skill-two" rows="4"></textarea>
           </svg>
           Installing in the background — no tab switching
         </div>
-
         <div class="install-status" id="progress-subtitle">Preparing…</div>
-
-        <!-- Per-skill progress rows -->
         <div class="progress-items" id="progress-items"></div>
-
         <button class="btn-done" id="btn-done" style="display:none">Done</button>
-
-      </div><!-- /.overlay-content -->
-    </div><!-- /.overlay -->
+      </div>
+    </div>
 
   </div>
   <script src="minizip.js"></script>

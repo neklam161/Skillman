@@ -3,6 +3,7 @@
   "name": "Skillman for Claude",
   "version": "1.0.0",
   "description": "Browse and install Claude skills directly from your browser — no manual uploads.",
+  "author": "neklam161",
   "permissions": [
     "activeTab",
     "scripting",
@@ -38,9 +39,14 @@
       "resources": [
         "registry.json"
       ],
-      "matches": [
-        "<all_urls>"
-      ]
+      "matches": ["<all_urls>"]
+    },
+    {
+      "resources": [
+        "assets/fonts/*.woff2",
+        "assets/fonts/fonts.css"
+      ],
+      "matches": ["<all_urls>"]
     }
   ],
   "icons": {
