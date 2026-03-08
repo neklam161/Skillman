@@ -1,22 +1,22 @@
-/* ── Reset & Base ──────────────────────────────────────────────────────────── */
+/* ── Reset & Base ────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg:         #0e0e10;
-  --surface:    #18181c;
-  --surface2:   #222228;
-  --border:     #2a2a32;
-  --border2:    #35353f;
-  --text:       #f0f0f4;
-  --text-2:     #9090a0;
-  --text-3:     #5a5a6e;
-  --accent:     #cc7832;
-  --accent-2:   #e8954a;
-  --green:      #4caf7d;
-  --red:        #e05c5c;
-  --blue:       #5b8dee;
-  --radius:     8px;
-  --radius-sm:  5px;
+  --bg:       #0e0e10;
+  --surface:  #18181c;
+  --surface2: #222228;
+  --border:   #2a2a32;
+  --border2:  #35353f;
+  --text:     #f0f0f4;
+  --text-2:   #9090a0;
+  --text-3:   #5a5a6e;
+  --accent:   #cc7832;
+  --accent-2: #e8954a;
+  --green:    #4caf7d;
+  --red:      #e05c5c;
+  --blue:     #5b8dee;
+  --radius:   8px;
+  --radius-sm:5px;
 }
 
 html, body {
@@ -32,7 +32,7 @@ html, body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* ── App shell ─────────────────────────────────────────────────────────────── */
+/* ── App shell ───────────────────────────────────────────────────────────── */
 .app {
   display: flex;
   flex-direction: column;
@@ -41,7 +41,7 @@ html, body {
   overflow: hidden;
 }
 
-/* ── Header ────────────────────────────────────────────────────────────────── */
+/* ── Header ──────────────────────────────────────────────────────────────── */
 .header {
   display: flex;
   align-items: center;
@@ -52,68 +52,31 @@ html, body {
   background: var(--bg);
 }
 
-.logo {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
+.logo { display: flex; align-items: center; gap: 10px; }
 
 .logo-mark {
-  width: 30px;
-  height: 30px;
+  width: 30px; height: 30px;
   background: var(--accent);
   border-radius: 7px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  box-shadow: 0 0 16px rgba(204, 120, 50, 0.35);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 0 16px rgba(204,120,50,0.35);
 }
 
 .logo-s {
   font-family: 'Syne', sans-serif;
-  font-weight: 800;
-  font-size: 16px;
-  color: #fff;
-  line-height: 1;
-  letter-spacing: -0.5px;
+  font-weight: 800; font-size: 16px; color: #fff;
+  line-height: 1; letter-spacing: -0.5px;
 }
 
-.logo-text {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-}
+.logo-text { display: flex; flex-direction: column; }
+.logo-name { font-weight: 700; font-size: 14px; letter-spacing: -0.3px; line-height: 1.1; }
+.logo-tag  { font-family: 'DM Mono', monospace; font-size: 9px; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.5px; }
 
-.logo-name {
-  font-weight: 700;
-  font-size: 14px;
-  letter-spacing: -0.3px;
-  color: var(--text);
-  line-height: 1.1;
-}
-
-.logo-tag {
-  font-family: 'DM Mono', monospace;
-  font-size: 9px;
-  font-weight: 400;
-  color: var(--text-3);
-  letter-spacing: 0.5px;
-  text-transform: uppercase;
-  line-height: 1;
-}
-
-.header-actions {
-  display: flex;
-  gap: 6px;
-}
+.header-actions { display: flex; gap: 6px; }
 
 .btn-icon {
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -121,713 +84,27 @@ html, body {
   cursor: pointer;
   transition: all 0.15s ease;
 }
+.btn-icon:hover { background: var(--surface2); color: var(--text); border-color: var(--border2); }
+.btn-icon.active { background: rgba(204,120,50,0.15); border-color: var(--accent); color: var(--accent-2); }
+.btn-icon.spinning svg { animation: spin 0.7s linear infinite; }
 
-.btn-icon:hover {
-  background: var(--surface2);
-  color: var(--text);
-  border-color: var(--border2);
-}
-
-.btn-icon.spinning svg {
-  animation: spin 0.7s linear infinite;
-}
-
-@keyframes spin { to { transform: rotate(360deg); } }
-
-/* ── Toolbar ───────────────────────────────────────────────────────────────── */
-.toolbar {
-  padding: 10px 16px 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.search-wrap {
-  position: relative;
-}
-
-.search-icon {
-  position: absolute;
-  left: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--text-3);
-  pointer-events: none;
-}
-
-.search-input {
-  width: 100%;
-  height: 34px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  font-family: 'Syne', sans-serif;
-  font-size: 12.5px;
-  padding: 0 12px 0 32px;
-  outline: none;
-  transition: border-color 0.15s ease;
-}
-
-.search-input::placeholder { color: var(--text-3); }
-.search-input:focus { border-color: var(--accent); }
-
-.tags {
-  display: flex;
-  gap: 5px;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  padding-bottom: 8px;
-  scrollbar-width: none;
-}
-.tags::-webkit-scrollbar { display: none; }
-
-.tag {
-  height: 22px;
-  padding: 0 9px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  color: var(--text-2);
-  font-family: 'DM Mono', monospace;
-  font-size: 10px;
-  font-weight: 400;
-  letter-spacing: 0.3px;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.15s ease;
-  flex-shrink: 0;
-}
-
-.tag:hover {
-  background: var(--surface2);
-  color: var(--text);
-  border-color: var(--border2);
-}
-
-.tag.active {
-  background: rgba(204, 120, 50, 0.15);
-  border-color: var(--accent);
-  color: var(--accent-2);
-}
-
-/* ── Skills list ───────────────────────────────────────────────────────────── */
-.skills-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 6px 16px 0;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border2) transparent;
-}
-
-.skills-list::-webkit-scrollbar { width: 4px; }
-.skills-list::-webkit-scrollbar-track { background: transparent; }
-.skills-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
-
-/* Loading */
-.loading {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 60px 0;
-  color: var(--text-3);
-  font-family: 'DM Mono', monospace;
-  font-size: 11px;
-}
-
-.spinner {
-  width: 22px;
-  height: 22px;
-  border: 2px solid var(--border2);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-  animation: spin 0.7s linear infinite;
-}
-
-/* Empty state */
-.empty {
-  text-align: center;
-  padding: 50px 20px;
-  color: var(--text-3);
-  font-family: 'DM Mono', monospace;
-  font-size: 11px;
-}
-
-/* Skill card */
-.skill-card {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 10px 12px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  margin-bottom: 6px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  position: relative;
-  overflow: hidden;
-}
-
-.skill-card::before {
-  content: '';
-  position: absolute;
-  left: 0; top: 0; bottom: 0;
-  width: 2px;
-  background: var(--accent);
-  opacity: 0;
-  transition: opacity 0.15s ease;
-}
-
-.skill-card:hover {
-  border-color: var(--border2);
-  background: var(--surface2);
-}
-
-.skill-card.selected {
-  border-color: var(--accent);
-  background: rgba(204, 120, 50, 0.07);
-}
-
-.skill-card.selected::before {
-  opacity: 1;
-}
-
-.skill-card.installed {
-  opacity: 0.6;
-}
-
-.skill-icon {
-  font-size: 20px;
-  line-height: 1;
-  flex-shrink: 0;
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--surface2);
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-}
-
-.skill-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.skill-name-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 2px;
-}
-
-.skill-name {
-  font-weight: 600;
-  font-size: 13px;
-  color: var(--text);
-  letter-spacing: -0.1px;
-}
-
-.skill-author {
-  font-family: 'DM Mono', monospace;
-  font-size: 9px;
-  color: var(--text-3);
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  padding: 1px 5px;
-  border-radius: 3px;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-}
-
-.skill-desc {
-  font-size: 11.5px;
-  color: var(--text-2);
-  line-height: 1.45;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.skill-check {
-  width: 18px;
-  height: 18px;
-  border-radius: 4px;
-  border: 1.5px solid var(--border2);
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s ease;
-  margin-top: 1px;
-  background: transparent;
-}
-
-.skill-card.selected .skill-check {
-  background: var(--accent);
-  border-color: var(--accent);
-}
-
-.skill-check svg {
-  opacity: 0;
-  transform: scale(0.6);
-  transition: all 0.15s ease;
-}
-
-.skill-card.selected .skill-check svg {
-  opacity: 1;
-  transform: scale(1);
-}
-
-.installed-badge {
-  font-family: 'DM Mono', monospace;
-  font-size: 9px;
-  color: var(--green);
-  background: rgba(76, 175, 125, 0.12);
-  border: 1px solid rgba(76, 175, 125, 0.25);
-  padding: 1px 6px;
-  border-radius: 3px;
-  letter-spacing: 0.3px;
-}
-
-/* ── Footer ────────────────────────────────────────────────────────────────── */
-.footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 16px 14px;
-  border-top: 1px solid var(--border);
-  flex-shrink: 0;
-  background: var(--bg);
-}
-
-.selection-info {
-  font-family: 'DM Mono', monospace;
-  font-size: 11px;
-  color: var(--text-3);
-}
-
-.btn-install {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  height: 34px;
-  padding: 0 18px;
-  background: var(--accent);
-  border: none;
-  border-radius: var(--radius-sm);
-  color: #fff;
-  font-family: 'Syne', sans-serif;
-  font-weight: 600;
-  font-size: 13px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  box-shadow: 0 0 16px rgba(204, 120, 50, 0.3);
-  letter-spacing: 0.1px;
-}
-
-.btn-install:hover:not(:disabled) {
-  background: var(--accent-2);
-  box-shadow: 0 0 24px rgba(204, 120, 50, 0.45);
-  transform: translateY(-1px);
-}
-
-.btn-install:disabled {
-  background: var(--surface2);
-  color: var(--text-3);
-  box-shadow: none;
-  cursor: not-allowed;
-}
-
-/* ── Progress overlay ──────────────────────────────────────────────────────── */
-.overlay {
-  position: absolute;
-  inset: 0;
-  background: rgba(14, 14, 16, 0.96);
-  backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-  animation: fadeIn 0.2s ease;
-}
-
-@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-
-.progress-panel {
-  width: calc(100% - 32px);
-  background: var(--surface);
-  border: 1px solid var(--border2);
-  border-radius: 12px;
-  padding: 20px;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
-}
-
-.progress-header {
-  margin-bottom: 16px;
-}
-
-.progress-title {
-  display: block;
-  font-weight: 700;
-  font-size: 15px;
-  color: var(--text);
-  margin-bottom: 2px;
-}
-
-.progress-subtitle {
-  font-family: 'DM Mono', monospace;
-  font-size: 11px;
-  color: var(--text-3);
-}
-
-.progress-items {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  max-height: 280px;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border2) transparent;
-}
-
-.progress-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 12px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-}
-
-.progress-item-icon { font-size: 16px; flex-shrink: 0; }
-
-.progress-item-name {
-  flex: 1;
-  font-weight: 500;
-  font-size: 12.5px;
-  color: var(--text);
-}
-
-.progress-item-status {
-  font-family: 'DM Mono', monospace;
-  font-size: 10px;
-  letter-spacing: 0.3px;
-}
-
-.status-downloading { color: var(--blue); }
-.status-downloaded  { color: var(--text-2); }
-.status-installing  { color: var(--accent-2); }
-.status-installed   { color: var(--green); }
-.status-error       { color: var(--red); }
-.status-pending     { color: var(--text-3); }
-
-.status-indicator {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  background: var(--text-3);
-  transition: background 0.2s ease;
-}
-
-.status-indicator.downloading { background: var(--blue); animation: pulse 1s infinite; }
-.status-indicator.installing  { background: var(--accent); animation: pulse 1s infinite; }
-.status-indicator.installed   { background: var(--green); }
-.status-indicator.error       { background: var(--red); }
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.4; }
-}
-
-.btn-done {
-  width: 100%;
-  height: 36px;
-  margin-top: 16px;
-  background: var(--accent);
-  border: none;
-  border-radius: var(--radius-sm);
-  color: #fff;
-  font-family: 'Syne', sans-serif;
-  font-weight: 600;
-  font-size: 13px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.btn-done:hover {
-  background: var(--accent-2);
-}
-
-/* ── URL Install Panel ─────────────────────────────────────────────────────── */
-.url-panel {
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
-  flex-shrink: 0;
-  animation: slideDown 0.2s ease;
-}
-
+@keyframes spin    { to { transform: rotate(360deg); } }
+@keyframes fadeIn  { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slideDown {
   from { opacity: 0; transform: translateY(-8px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-
-.url-panel-inner {
-  padding: 10px 16px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
-
-.url-label {
-  font-size: 11px;
-  color: var(--text-2);
-}
-
-.url-label code {
-  font-family: 'DM Mono', monospace;
-  font-size: 10px;
-  color: var(--accent-2);
-  background: rgba(204, 120, 50, 0.1);
-  padding: 1px 4px;
-  border-radius: 3px;
-}
-
-.url-input-row {
-  display: flex;
-  gap: 6px;
-}
-
-.url-input {
-  flex: 1;
-  height: 32px;
-  background: var(--bg);
-  border: 1px solid var(--border2);
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  font-family: 'DM Mono', monospace;
-  font-size: 10.5px;
-  padding: 0 10px;
-  outline: none;
-  transition: border-color 0.15s ease;
-  min-width: 0;
-}
-
-.url-input::placeholder { color: var(--text-3); font-size: 9.5px; }
-.url-input:focus { border-color: var(--accent); }
-
-.btn-url-install {
-  width: 32px;
-  height: 32px;
-  flex-shrink: 0;
-  background: var(--accent);
-  border: none;
-  border-radius: var(--radius-sm);
-  color: #fff;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.15s ease;
-}
-
-.btn-url-install:hover { background: var(--accent-2); }
-.btn-url-install:disabled { background: var(--surface2); cursor: not-allowed; }
-
-.url-hint {
-  font-family: 'DM Mono', monospace;
-  font-size: 10px;
-  min-height: 14px;
-  transition: color 0.15s ease;
-}
-
-.url-hint.ok    { color: var(--green); }
-.url-hint.error { color: var(--red); }
-.url-hint.info  { color: var(--text-3); }
-
-/* Active state for URL button */
-.btn-icon.active {
-  background: rgba(204, 120, 50, 0.15);
-  border-color: var(--accent);
-  color: var(--accent-2);
-}
-
-/* ── Install progress redesign (#5) ───────────────────────────────────────── */
-.overlay {
-  position: absolute;
-  inset: 0;
-  background: var(--bg);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-  animation: fadeIn 0.25s ease;
-  padding: 24px 20px;
-  gap: 0;
-}
-
-.install-hero {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 28px;
-}
-
-.install-orb {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  background: rgba(204, 120, 50, 0.12);
-  border: 1.5px solid rgba(204, 120, 50, 0.3);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-}
-
-.install-orb::before {
-  content: '';
-  position: absolute;
-  inset: -6px;
-  border-radius: 50%;
-  border: 1.5px solid rgba(204, 120, 50, 0.15);
-  animation: orbPulse 2s ease-in-out infinite;
-}
-
-.install-orb::after {
-  content: '';
-  position: absolute;
-  inset: -12px;
-  border-radius: 50%;
-  border: 1px solid rgba(204, 120, 50, 0.07);
-  animation: orbPulse 2s ease-in-out infinite 0.3s;
-}
-
 @keyframes orbPulse {
   0%, 100% { opacity: 1; transform: scale(1); }
-  50%       { opacity: 0.4; transform: scale(1.05); }
+  50%       { opacity: 0.2; transform: scale(1.05); }
 }
+@keyframes blink { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
 
-.install-orb-icon {
-  font-size: 22px;
-  z-index: 1;
-}
-
-.install-title {
-  font-weight: 700;
-  font-size: 15px;
-  color: var(--text);
-  letter-spacing: -0.2px;
-}
-
-.install-status {
-  font-family: 'DM Mono', monospace;
-  font-size: 10.5px;
-  color: var(--text-3);
-  text-align: center;
-  min-height: 16px;
-  transition: all 0.2s ease;
-}
-
-/* Progress items - more compact */
-.progress-items {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 260px;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border2) transparent;
-  margin-bottom: 16px;
-}
-
-.progress-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  transition: border-color 0.2s ease;
-}
-
-.progress-item.status-installing {
-  border-color: rgba(204, 120, 50, 0.3);
-}
-
-.progress-item.status-installed {
-  border-color: rgba(76, 175, 125, 0.3);
-}
-
-.progress-item.status-error {
-  border-color: rgba(224, 92, 92, 0.3);
-}
-
-/* Background tab notice */
-.bg-notice {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 8px 12px;
-  background: rgba(91, 141, 238, 0.08);
-  border: 1px solid rgba(91, 141, 238, 0.2);
-  border-radius: var(--radius-sm);
-  font-family: 'DM Mono', monospace;
-  font-size: 10px;
-  color: var(--blue);
-  width: 100%;
-  margin-bottom: 12px;
-}
-
-.bg-notice svg { flex-shrink: 0; }
-
-/* Done button */
-.btn-done {
-  width: 100%;
-  height: 36px;
-  background: var(--accent);
-  border: none;
-  border-radius: var(--radius-sm);
-  color: #fff;
-  font-family: 'Syne', sans-serif;
-  font-weight: 600;
-  font-size: 13px;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  margin-top: 4px;
-}
-
-.btn-done:hover { background: var(--accent-2); }
-
-/* Custom installs section (#3) */
-.section-label {
-  font-family: 'DM Mono', monospace;
-  font-size: 9px;
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
-  color: var(--text-3);
-  padding: 8px 0 4px;
-  width: 100%;
-}
-
-.skill-card.custom .skill-author {
-  color: var(--blue);
-  border-color: rgba(91, 141, 238, 0.25);
-  background: rgba(91, 141, 238, 0.08);
-}
-
-/* URL panel redesign (#1) */
+/* ── URL Panel ───────────────────────────────────────────────────────────── */
 .url-panel {
   border-bottom: 1px solid var(--border);
   background: var(--surface);
@@ -837,140 +114,23 @@ html, body {
 
 .url-panel-inner {
   padding: 12px 16px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  display: flex; flex-direction: column; gap: 8px;
 }
 
 .url-panel-header {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--text-2);
-  font-size: 12px;
-  font-weight: 600;
+  display: flex; align-items: center; gap: 7px;
+  color: var(--text-2); font-size: 12px; font-weight: 600;
 }
-
 .url-panel-header svg { color: var(--accent); flex-shrink: 0; }
 
-.url-supported {
-  display: flex;
-  gap: 5px;
-  flex-wrap: wrap;
-}
-
+.url-supported { display: flex; gap: 5px; flex-wrap: wrap; }
 .url-supported-tag {
-  font-family: 'DM Mono', monospace;
-  font-size: 9px;
-  color: var(--text-3);
-  background: var(--bg);
+  font-family: 'DM Mono', monospace; font-size: 9px;
+  color: var(--text-3); background: var(--bg);
   border: 1px solid var(--border);
-  padding: 2px 6px;
-  border-radius: 3px;
+  padding: 2px 6px; border-radius: 3px;
 }
 
-.url-inputs {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.url-input-row {
-  display: flex;
-  gap: 6px;
-}
-
-.url-input {
-  flex: 1;
-  height: 32px;
-  background: var(--bg);
-  border: 1px solid var(--border2);
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  font-family: 'DM Mono', monospace;
-  font-size: 10.5px;
-  padding: 0 10px;
-  outline: none;
-  transition: border-color 0.15s ease;
-  min-width: 0;
-}
-
-.url-input::placeholder { color: var(--text-3); font-size: 9.5px; }
-.url-input:focus { border-color: var(--accent); }
-
-.btn-url-install {
-  width: 32px;
-  height: 32px;
-  flex-shrink: 0;
-  background: var(--accent);
-  border: none;
-  border-radius: var(--radius-sm);
-  color: #fff;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.15s ease;
-}
-
-.btn-url-install:hover { background: var(--accent-2); }
-
-.url-hint {
-  font-family: 'DM Mono', monospace;
-  font-size: 10px;
-  min-height: 13px;
-}
-
-.url-hint.ok    { color: var(--green); }
-.url-hint.error { color: var(--red); }
-.url-hint.info  { color: var(--text-3); }
-
-.btn-icon.active {
-  background: rgba(204, 120, 50, 0.15);
-  border-color: var(--accent);
-  color: var(--accent-2);
-}
-
-/* btn-url-add (+ button) */
-.btn-url-add {
-  width: 32px;
-  height: 32px;
-  flex-shrink: 0;
-  background: var(--surface2);
-  border: 1px solid var(--border2);
-  border-radius: var(--radius-sm);
-  color: var(--text-2);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s ease;
-}
-.btn-url-add:hover { background: var(--border2); color: var(--text); }
-
-/* btn-url-install full width */
-.btn-url-install {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  width: 100%;
-  height: 32px;
-  background: var(--accent);
-  border: none;
-  border-radius: var(--radius-sm);
-  color: #fff;
-  font-family: 'Syne', sans-serif;
-  font-weight: 600;
-  font-size: 12px;
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-.btn-url-install:hover { background: var(--accent-2); }
-
-/* remove old conflicting btn-url-install from previous append */
-
-/* ── URL textarea ──────────────────────────────────────────────────────────── */
 .url-textarea {
   width: 100%;
   background: var(--bg);
@@ -978,11 +138,9 @@ html, body {
   border-radius: var(--radius-sm);
   color: var(--text);
   font-family: 'DM Mono', monospace;
-  font-size: 10px;
-  line-height: 1.6;
+  font-size: 10px; line-height: 1.6;
   padding: 8px 10px;
-  outline: none;
-  resize: none;
+  outline: none; resize: none;
   transition: border-color 0.15s ease;
   scrollbar-width: thin;
   scrollbar-color: var(--border2) transparent;
@@ -990,7 +148,164 @@ html, body {
 .url-textarea::placeholder { color: var(--text-3); }
 .url-textarea:focus { border-color: var(--accent); }
 
-/* ── Overlay — full dim centered loading ──────────────────────────────────── */
+.url-hint { font-family: 'DM Mono', monospace; font-size: 10px; min-height: 13px; }
+.url-hint.ok    { color: var(--green); }
+.url-hint.error { color: var(--red); }
+.url-hint.info  { color: var(--text-3); }
+
+.btn-url-install {
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  width: 100%; height: 32px;
+  background: var(--accent); border: none;
+  border-radius: var(--radius-sm); color: #fff;
+  font-family: 'Syne', sans-serif; font-weight: 600; font-size: 12px;
+  cursor: pointer; transition: background 0.15s ease;
+}
+.btn-url-install:hover { background: var(--accent-2); }
+
+/* ── Toolbar ─────────────────────────────────────────────────────────────── */
+.toolbar { padding: 10px 16px 0; display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
+
+.search-wrap { position: relative; }
+.search-icon {
+  position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+  color: var(--text-3); pointer-events: none;
+}
+.search-input {
+  width: 100%; height: 34px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text);
+  font-family: 'Syne', sans-serif; font-size: 12.5px;
+  padding: 0 12px 0 32px; outline: none;
+  transition: border-color 0.15s ease;
+}
+.search-input::placeholder { color: var(--text-3); }
+.search-input:focus { border-color: var(--accent); }
+
+.tags {
+  display: flex; gap: 5px; flex-wrap: nowrap;
+  overflow-x: auto; padding-bottom: 8px; scrollbar-width: none;
+}
+.tags::-webkit-scrollbar { display: none; }
+
+.tag {
+  height: 22px; padding: 0 9px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 20px; color: var(--text-2);
+  font-family: 'DM Mono', monospace; font-size: 10px;
+  cursor: pointer; white-space: nowrap; flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+.tag:hover { background: var(--surface2); color: var(--text); border-color: var(--border2); }
+.tag.active { background: rgba(204,120,50,0.15); border-color: var(--accent); color: var(--accent-2); }
+
+/* ── Skills list ─────────────────────────────────────────────────────────── */
+.skills-list {
+  flex: 1; overflow-y: auto;
+  padding: 6px 16px 0;
+  scrollbar-width: thin; scrollbar-color: var(--border2) transparent;
+}
+.skills-list::-webkit-scrollbar { width: 4px; }
+.skills-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+.loading {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 12px; padding: 60px 0;
+  color: var(--text-3); font-family: 'DM Mono', monospace; font-size: 11px;
+}
+.spinner {
+  width: 22px; height: 22px;
+  border: 2px solid var(--border2); border-top-color: var(--accent);
+  border-radius: 50%; animation: spin 0.7s linear infinite;
+}
+
+.empty { text-align: center; padding: 50px 20px; color: var(--text-3); font-family: 'DM Mono', monospace; font-size: 11px; }
+
+.section-label {
+  font-family: 'DM Mono', monospace; font-size: 9px;
+  text-transform: uppercase; letter-spacing: 0.8px;
+  color: var(--text-3); padding: 8px 0 4px;
+}
+
+/* ── Skill card ──────────────────────────────────────────────────────────── */
+.skill-card {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 10px 12px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); margin-bottom: 6px;
+  cursor: pointer; transition: all 0.15s ease;
+  position: relative; overflow: hidden;
+}
+.skill-card::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+  width: 2px; background: var(--accent); opacity: 0; transition: opacity 0.15s ease;
+}
+.skill-card:hover { border-color: var(--border2); background: var(--surface2); }
+.skill-card.selected { border-color: var(--accent); background: rgba(204,120,50,0.07); }
+.skill-card.selected::before { opacity: 1; }
+.skill-card.installed { opacity: 0.6; }
+
+.skill-icon {
+  font-size: 20px; flex-shrink: 0;
+  width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--surface2); border-radius: var(--radius-sm); border: 1px solid var(--border);
+}
+
+.skill-info { flex: 1; min-width: 0; }
+.skill-name-row { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
+.skill-name { font-weight: 600; font-size: 13px; letter-spacing: -0.1px; }
+.skill-desc { font-size: 11.5px; color: var(--text-2); line-height: 1.45; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.skill-author {
+  font-family: 'DM Mono', monospace; font-size: 9px;
+  color: var(--text-3); background: var(--surface2);
+  border: 1px solid var(--border); padding: 1px 5px;
+  border-radius: 3px; text-transform: uppercase; letter-spacing: 0.4px;
+}
+.skill-card.custom .skill-author {
+  color: var(--blue); border-color: rgba(91,141,238,0.25); background: rgba(91,141,238,0.08);
+}
+
+.installed-badge {
+  font-family: 'DM Mono', monospace; font-size: 9px;
+  color: var(--green); background: rgba(76,175,125,0.12);
+  border: 1px solid rgba(76,175,125,0.25);
+  padding: 1px 6px; border-radius: 3px; letter-spacing: 0.3px;
+}
+
+.skill-check {
+  width: 18px; height: 18px; border-radius: 4px;
+  border: 1.5px solid var(--border2); flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s ease; margin-top: 1px;
+}
+.skill-card.selected .skill-check { background: var(--accent); border-color: var(--accent); }
+.skill-check svg { opacity: 0; transform: scale(0.6); transition: all 0.15s ease; }
+.skill-card.selected .skill-check svg { opacity: 1; transform: scale(1); }
+
+/* ── Footer ──────────────────────────────────────────────────────────────── */
+.footer {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px 14px; border-top: 1px solid var(--border);
+  flex-shrink: 0; background: var(--bg);
+}
+
+.selection-info { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--text-3); }
+
+.btn-install {
+  display: flex; align-items: center; gap: 7px;
+  height: 34px; padding: 0 18px;
+  background: var(--accent); border: none;
+  border-radius: var(--radius-sm); color: #fff;
+  font-family: 'Syne', sans-serif; font-weight: 600; font-size: 13px;
+  cursor: pointer; transition: all 0.15s ease;
+  box-shadow: 0 0 16px rgba(204,120,50,0.3);
+}
+.btn-install:hover:not(:disabled) { background: var(--accent-2); box-shadow: 0 0 24px rgba(204,120,50,0.45); transform: translateY(-1px); }
+.btn-install:disabled { background: var(--surface2); color: var(--text-3); box-shadow: none; cursor: not-allowed; }
+
+/* ── Overlay — full dim + centered card ──────────────────────────────────── */
 .overlay {
   position: absolute;
   inset: 0;
@@ -1004,8 +319,8 @@ html, body {
 .overlay-dim {
   position: absolute;
   inset: 0;
-  background: rgba(10, 10, 12, 0.85);
-  backdrop-filter: blur(6px);
+  background: rgba(8, 8, 10, 0.88);
+  backdrop-filter: blur(8px);
 }
 
 .overlay-content {
@@ -1014,87 +329,91 @@ html, body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
-  padding: 28px 24px;
-  width: calc(100% - 40px);
-  max-width: 320px;
+  gap: 14px;
+  padding: 28px 24px 24px;
+  width: calc(100% - 48px);
   background: var(--surface);
   border: 1px solid var(--border2);
   border-radius: 16px;
-  box-shadow: 0 24px 64px rgba(0,0,0,0.6);
-  animation: slideUp 0.25s ease;
-}
-
-@keyframes slideUp {
-  from { opacity: 0; transform: translateY(12px); }
-  to   { opacity: 1; transform: translateY(0); }
+  box-shadow: 0 32px 80px rgba(0,0,0,0.7);
+  animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* Orb */
 .install-orb {
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  background: rgba(204, 120, 50, 0.1);
-  border: 1.5px solid rgba(204, 120, 50, 0.25);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  flex-shrink: 0;
+  width: 64px; height: 64px; border-radius: 50%;
+  background: rgba(204,120,50,0.1);
+  border: 1.5px solid rgba(204,120,50,0.3);
+  display: flex; align-items: center; justify-content: center;
+  position: relative; flex-shrink: 0;
 }
 
 .orb-ring {
-  position: absolute;
-  border-radius: 50%;
-  border: 1px solid rgba(204, 120, 50, 0.15);
+  position: absolute; border-radius: 50%;
+  border: 1px solid rgba(204,120,50,0.15);
   animation: orbPulse 2.4s ease-in-out infinite;
+  pointer-events: none;
 }
-
 .orb-ring-1 { inset: -10px; animation-delay: 0s; }
-.orb-ring-2 { inset: -20px; animation-delay: 0.4s; border-color: rgba(204, 120, 50, 0.07); }
+.orb-ring-2 { inset: -22px; border-color: rgba(204,120,50,0.07); animation-delay: 0.5s; }
 
-@keyframes orbPulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50%       { opacity: 0.3; transform: scale(1.04); }
-}
-
-.install-orb-icon {
-  font-size: 26px;
-  z-index: 1;
-  line-height: 1;
-}
+.install-orb-icon { font-size: 28px; z-index: 1; line-height: 1; }
 
 .install-title {
-  font-weight: 700;
-  font-size: 15px;
-  color: var(--text);
-  letter-spacing: -0.2px;
-  text-align: center;
+  font-weight: 700; font-size: 15px;
+  color: var(--text); letter-spacing: -0.2px; text-align: center;
 }
 
 .install-status {
-  font-family: 'DM Mono', monospace;
-  font-size: 10.5px;
-  color: var(--text-3);
-  text-align: center;
-  min-height: 15px;
-  transition: color 0.2s ease;
-  width: 100%;
+  font-family: 'DM Mono', monospace; font-size: 10.5px;
+  color: var(--text-3); text-align: center;
+  min-height: 15px; width: 100%;
 }
 
 /* Progress items inside overlay */
 .overlay-content .progress-items {
   width: 100%;
-  max-height: 200px;
-  margin-bottom: 0;
+  display: flex; flex-direction: column; gap: 6px;
+  max-height: 180px; overflow-y: auto;
+  scrollbar-width: thin; scrollbar-color: var(--border2) transparent;
 }
+
+.progress-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px;
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); transition: border-color 0.2s ease;
+}
+.progress-item.status-installing { border-color: rgba(204,120,50,0.3); }
+.progress-item.status-installed  { border-color: rgba(76,175,125,0.3); }
+.progress-item.status-error      { border-color: rgba(224,92,92,0.3); }
+
+.progress-item-icon  { font-size: 16px; flex-shrink: 0; }
+.progress-item-name  { flex: 1; font-weight: 500; font-size: 12.5px; color: var(--text); }
+.progress-item-status { font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: 0.3px; }
+
+.status-indicator {
+  width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+  background: var(--text-3); transition: background 0.2s ease;
+}
+.status-indicator.downloading { background: var(--blue);   animation: blink 1s infinite; }
+.status-indicator.installing  { background: var(--accent); animation: blink 1s infinite; }
+.status-indicator.installed   { background: var(--green); }
+.status-indicator.error       { background: var(--red); }
+
+.status-downloading { color: var(--blue); }
+.status-downloaded  { color: var(--text-2); }
+.status-installing  { color: var(--accent-2); }
+.status-installed   { color: var(--green); }
+.status-error       { color: var(--red); }
+.status-pending     { color: var(--text-3); }
 
 /* Done button */
-.overlay-content .btn-done {
-  width: 100%;
-  margin-top: 0;
+.btn-done {
+  width: 100%; height: 36px;
+  background: var(--accent); border: none;
+  border-radius: var(--radius-sm); color: #fff;
+  font-family: 'Syne', sans-serif; font-weight: 600; font-size: 13px;
+  cursor: pointer; transition: all 0.15s ease;
 }
-
-/* bg-notice hidden since we're back to tab switching */
-.bg-notice { display: none; }
+.btn-done:hover { background: var(--accent-2); }
