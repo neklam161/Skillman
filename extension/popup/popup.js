@@ -2,7 +2,7 @@
 
 // ── State ──────────────────────────────────────────────────────────────────
 let allSkills      = [];
-let customSkills   = [];
+let customSkills   = [];   // #3 — URL-installed skills
 let installedNames = new Set();
 let selectedNames  = new Set();
 let activeTag      = "all";
@@ -27,9 +27,11 @@ async function init() {
   const res = await chrome.runtime.sendMessage({ type: "GET_INSTALLED" });
   installedNames = new Set((res.installed || []).map(s => s.name));
 
+  // Load custom (URL-installed) skills from storage (#3)
   const customRes = await chrome.storage.local.get("customSkills");
   customSkills = customRes.customSkills || [];
 
+  // Recover session if popup was closed mid-install (#2)
   const sessionRes = await chrome.runtime.sendMessage({ type: "GET_SESSION" });
   if (sessionRes.session) {
     recoverSession(sessionRes.session);
@@ -39,7 +41,7 @@ async function init() {
   await loadRegistry();
 }
 
-// ── Session recovery ───────────────────────────────────────────────────────
+// ── Session recovery (#2) ──────────────────────────────────────────────────
 function recoverSession(session) {
   showOverlay();
   progressSub.textContent = "Install in progress...";
@@ -54,7 +56,7 @@ function recoverSession(session) {
   attachProgressListener(session.skills);
 }
 
-// ── Not logged in ──────────────────────────────────────────────────────────
+// ── Not logged in (#1) ─────────────────────────────────────────────────────
 function showNotLoggedIn() {
   progressItems.innerHTML = `
     <div style="text-align:center;padding:20px 10px;display:flex;flex-direction:column;align-items:center;gap:10px">
@@ -114,17 +116,17 @@ function buildTagFilters() {
   });
 }
 
-// ── Render skills ──────────────────────────────────────────────────────────
+// ── Render skills (#3 — shows custom installs too) ─────────────────────────
 function renderSkills() {
   const q = searchQuery.toLowerCase();
   listEl.innerHTML = "";
 
   const filtered = allSkills.filter(skill => {
-    const matchesTag    = activeTag === "all" || (skill.tags || []).includes(activeTag);
+    const matchesTag = activeTag === "all" || (skill.tags || []).includes(activeTag);
     const matchesSearch = !q ||
       skill.name.toLowerCase().includes(q) ||
       (skill.display_name || "").toLowerCase().includes(q) ||
-      (skill.description  || "").toLowerCase().includes(q);
+      (skill.description || "").toLowerCase().includes(q);
     return matchesTag && matchesSearch;
   });
 
@@ -135,6 +137,7 @@ function renderSkills() {
 
   filtered.forEach(skill => listEl.appendChild(buildSkillCard(skill)));
 
+  // Custom/URL-installed skills section (#3)
   const filteredCustom = customSkills.filter(skill =>
     !q ||
     skill.name.toLowerCase().includes(q) ||
@@ -164,6 +167,23 @@ function buildSkillCard(skill, isCustom = false) {
       ? `<span class="skill-author">custom</span>`
       : `<span class="skill-author">${skill.author || "community"}</span>`;
 
+  const trashBtn = isInstalled ? `
+    <button class="btn-uninstall" title="Uninstall skill" data-uninstall="${skill.name}">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="3 6 5 6 21 6"/>
+        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+        <path d="M10 11v6M14 11v6"/>
+        <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+      </svg>
+    </button>
+  ` : `
+    <div class="skill-check">
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="20 6 9 17 4 12"/>
+      </svg>
+    </div>
+  `;
+
   card.innerHTML = `
     <div class="skill-icon">${skill.icon || "🔧"}</div>
     <div class="skill-info">
@@ -173,14 +193,22 @@ function buildSkillCard(skill, isCustom = false) {
       </div>
       <div class="skill-desc">${skill.description || ""}</div>
     </div>
-    <div class="skill-check">
-      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="20 6 9 17 4 12"/>
-      </svg>
-    </div>
+    ${trashBtn}
   `;
 
-  card.addEventListener("click", () => toggleSkill(skill.name));
+  card.addEventListener("click", (e) => {
+    if (e.target.closest("[data-uninstall]")) return; // handled separately
+    toggleSkill(skill.name);
+  });
+
+  const uninstallBtn = card.querySelector("[data-uninstall]");
+  if (uninstallBtn) {
+    uninstallBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      handleUninstall(skill);
+    });
+  }
+
   return card;
 }
 
@@ -199,7 +227,6 @@ function updateFooter() {
 
 // ── Install from registry ──────────────────────────────────────────────────
 async function handleInstall() {
-  // FIX #4: Pass the full skill object including sha256 to the service worker
   const skills = [...allSkills, ...customSkills].filter(s => selectedNames.has(s.name));
   if (skills.length === 0) return;
 
@@ -212,7 +239,6 @@ async function handleInstall() {
   skills.forEach(skill => appendProgressRow(skill, "pending"));
   attachProgressListener(skills);
 
-  // sha256 fields ride along on the skill objects — service worker reads them
   await chrome.runtime.sendMessage({ type: "INSTALL_SKILLS", skills });
 }
 
@@ -243,53 +269,62 @@ function updateProgressRow(skillName, status) {
   const row = document.getElementById(`row-${skillName}`);
   if (ind) ind.className = `status-indicator ${status}`;
   if (st)  { st.className = `progress-item-status status-${status}`; st.textContent = status; }
-  if (row) row.className  = `progress-item status-${status}`;
+  if (row) row.className = `progress-item status-${status}`;
 }
 
-// FIX #5 (partial): guard flag prevents duplicate listeners on session recovery
-let _progressListenerAttached = false;
-
 function attachProgressListener(skills) {
-  if (_progressListenerAttached) return;
-  _progressListenerAttached = true;
-
   const listener = (message) => {
-    if (message.type === "PROGRESS")      updateProgressRow(message.skill, message.status);
-    if (message.type === "STATUS")        progressSub.textContent = message.message;
+    if (message.type === "PROGRESS") updateProgressRow(message.skill, message.status);
+    if (message.type === "STATUS")   progressSub.textContent = message.message;
     if (message.type === "NOT_LOGGED_IN") showNotLoggedIn();
     if (message.type === "DONE") {
-      orbIcon.textContent    = message.hadErrors ? "⚠️" : "✅";
+      orbIcon.textContent = message.hadErrors ? "⚠️" : "✅";
       progressSub.textContent = message.hadErrors ? "Finished with some errors." : "All done!";
-      btnDone.style.display  = "block";
+      btnDone.style.display = "block";
       if (!message.hadErrors) skills.forEach(s => installedNames.add(s.name));
       selectedNames.clear();
       updateFooter();
       chrome.runtime.onMessage.removeListener(listener);
-      _progressListenerAttached = false;
     }
   };
   chrome.runtime.onMessage.addListener(listener);
 }
 
-// ── FIX #3: Safe base64 — chunked, no stack overflow on large files ────────
-//
-// Used when zipping folder-based skill installs in the popup context.
-// Mirrors the same fix applied to bufferToBase64() in service_worker.js.
+// ── Uninstall ──────────────────────────────────────────────────────────────
+async function handleUninstall(skill) {
+  showOverlay();
+  progressItems.innerHTML = '';
+  btnDone.style.display = 'none';
+  orbIcon.textContent = '🗑️';
+  document.getElementById('install-title').textContent = 'Uninstalling';
+  progressSub.textContent = `Removing ${skill.display_name || skill.name}…`;
 
-function arrayBufferToBase64(buffer) {
-  const bytes     = new Uint8Array(buffer);
-  const chunkSize = 8192; // 8 KB chunks
-  let binary = "";
+  appendProgressRow(skill, 'installing');
 
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, i + chunkSize);
-    binary += String.fromCharCode(...chunk);
+  const res = await chrome.runtime.sendMessage({ type: 'UNINSTALL_SKILL', skill });
+
+  if (res?.ok) {
+    updateProgressRow(skill.name, 'installed'); // reuse green style
+    document.getElementById('st-' + skill.name).textContent = 'removed';
+    orbIcon.textContent = '✅';
+    progressSub.textContent = 'Uninstalled successfully.';
+    installedNames.delete(skill.name);
+
+    // Remove from customSkills storage if it was a custom install
+    const customRes = await chrome.storage.local.get('customSkills');
+    const updated = (customRes.customSkills || []).filter(s => s.name !== skill.name);
+    await chrome.storage.local.set({ customSkills: updated });
+    customSkills = updated;
+  } else {
+    updateProgressRow(skill.name, 'error');
+    orbIcon.textContent = '⚠️';
+    progressSub.textContent = res?.error || 'Uninstall failed.';
   }
 
-  return btoa(binary);
+  btnDone.style.display = 'block';
 }
 
-// ── URL Install ────────────────────────────────────────────────────────────
+// ── URL Install (#1 redesign, #4 multiple URLs) ────────────────────────────
 const urlPanel      = document.getElementById("url-panel");
 const urlTextarea   = document.getElementById("url-textarea");
 const urlHint       = document.getElementById("url-hint");
@@ -306,7 +341,7 @@ btnUrl.addEventListener("click", () => {
 urlTextarea.addEventListener("input", () => {
   const lines = urlTextarea.value.split('\n').map(l => l.trim()).filter(Boolean);
   if (!lines.length) { setHint("", ""); return; }
-  const valid   = lines.filter(l => parseGitHubUrl(l));
+  const valid = lines.filter(l => parseGitHubUrl(l));
   const invalid = lines.length - valid.length;
   if (invalid === 0) {
     setHint(`✓ ${valid.length} URL${valid.length > 1 ? "s" : ""} ready`, "ok");
@@ -324,6 +359,7 @@ async function installFromUrls() {
   const parsedList = lines.map(parseGitHubUrl).filter(Boolean);
   if (!parsedList.length) { setHint("No valid GitHub URLs found", "error"); return; }
 
+  // Close panel and clear textarea
   urlPanel.style.display = "none";
   btnUrl.classList.remove("active");
   urlTextarea.value = "";
@@ -346,21 +382,12 @@ async function installFromUrls() {
         updateProgressRow(skillName, "downloading");
         progressSub.textContent = `Downloading ${skillName}…`;
 
-        // URL-installed skills have no sha256 — that's expected, skip verification
-        const skill = {
-          name: skillName, display_name: skillName,
-          description: "Installed from URL", icon: "🔗",
-          source: p.rawUrl, tags: ["custom"], author: "custom",
-          sha256: null // explicitly null — service worker will skip verification
-        };
+        const skill = { name: skillName, display_name: skillName, description: "Installed from URL", icon: "🔗", source: p.rawUrl, tags: ["custom"], author: "custom" };
 
         await new Promise((resolve, reject) => {
           const listener = (msg) => {
             if (msg.type === "PROGRESS" && msg.skill === skillName) updateProgressRow(skillName, msg.status);
-            if (msg.type === "NOT_LOGGED_IN") {
-              chrome.runtime.onMessage.removeListener(listener);
-              reject(new Error("Not logged in to Claude — please log in and try again"));
-            }
+            if (msg.type === "NOT_LOGGED_IN") { chrome.runtime.onMessage.removeListener(listener); reject(new Error("Not logged in to Claude — please log in and try again")); }
             if (msg.type === "DONE") {
               chrome.runtime.onMessage.removeListener(listener);
               if (msg.hadErrors) reject(new Error("Install failed — check you are logged in to Claude"));
@@ -378,17 +405,10 @@ async function installFromUrls() {
         const zipBuffer = await fetchAndZipSkillFolder(p, msg => { progressSub.textContent = msg; });
         updateProgressRow(skillName, "installing");
         progressSub.textContent = `Installing ${skillName}…`;
-        const zipRes = await chrome.runtime.sendMessage({
-          type: "INSTALL_ZIPPED", skillName,
-          zipBase64: arrayBufferToBase64(zipBuffer) // FIX #3: safe chunked encoding
-        });
+        const zipRes = await chrome.runtime.sendMessage({ type: "INSTALL_ZIPPED", skillName, zipBase64: arrayBufferToBase64(zipBuffer) });
         if (!zipRes?.ok) throw new Error(zipRes?.error || "Install failed");
         updateProgressRow(skillName, "installed");
-        await saveCustomSkill({
-          name: skillName, display_name: skillName,
-          description: "Installed from GitHub folder",
-          icon: "🔗", tags: ["custom"], author: "custom"
-        });
+        await saveCustomSkill({ name: skillName, display_name: skillName, description: "Installed from GitHub folder", icon: "🔗", tags: ["custom"], author: "custom" });
       }
     } catch (e) {
       console.error("[Skillman] URL install failed for", skillName, e.message);
@@ -398,27 +418,29 @@ async function installFromUrls() {
     }
   }
 
-  orbIcon.textContent     = anyError ? "⚠️" : "✅";
+  orbIcon.textContent = anyError ? "⚠️" : "✅";
   progressSub.textContent = anyError ? "Finished with some errors." : "All done!";
-  btnDone.style.display   = "block";
+  btnDone.style.display = "block";
 }
 
+
+
 async function saveCustomSkill(skill) {
-  const res     = await chrome.storage.local.get("customSkills");
+  const res = await chrome.storage.local.get("customSkills");
   const existing = res.customSkills || [];
-  const updated  = [...existing.filter(s => s.name !== skill.name), skill];
+  const updated = [...existing.filter(s => s.name !== skill.name), skill];
   await chrome.storage.local.set({ customSkills: updated });
   customSkills = updated;
   installedNames.add(skill.name);
 }
 
-// ── GitHub folder fetch & zip ──────────────────────────────────────────────
+// ── GitHub folder fetch & zip (with subdirectory recursion #2) ────────────
 async function fetchAndZipSkillFolder(parsed, onProgress, zip = null, baseName = null) {
   const { user, repo, branch, path } = parsed;
   const isRoot = zip === null;
 
   if (isRoot) {
-    zip      = new window.MiniZip();
+    zip = new window.MiniZip();
     baseName = parsed.name;
   }
 
@@ -440,6 +462,8 @@ async function fetchAndZipSkillFolder(parsed, onProgress, zip = null, baseName =
       const fileRes = await fetch(item.download_url);
       if (!fileRes.ok) throw new Error(`Failed to fetch ${item.name}`);
       const buf = await fileRes.arrayBuffer();
+      // Strip the root folder path to get path relative to skill root
+      // e.g. item.path = "tailored-resume-generator/SKILL.md" -> relativePath = "SKILL.md"
       const rootPrefix = parsed.path.endsWith("/") ? parsed.path : parsed.path + "/";
       const relativePath = item.path.startsWith(rootPrefix)
         ? item.path.slice(rootPrefix.length)
@@ -457,6 +481,13 @@ async function fetchAndZipSkillFolder(parsed, onProgress, zip = null, baseName =
     onProgress("Packaging skill…");
     return zip.generate();
   }
+}
+
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
 }
 
 // ── Parse GitHub URL ───────────────────────────────────────────────────────
@@ -488,13 +519,17 @@ function parseGitHubUrl(url) {
 
 function setHint(text, type) {
   urlHint.textContent = text;
-  urlHint.className   = `url-hint ${type}`;
+  urlHint.className = `url-hint ${type}`;
 }
 
 // ── Events ─────────────────────────────────────────────────────────────────
 btnRefresh.addEventListener("click", loadRegistry);
 btnInstall.addEventListener("click", handleInstall);
-btnDone.addEventListener("click", () => { overlay.style.display = "none"; renderSkills(); });
+btnDone.addEventListener("click", () => {
+  overlay.style.display = "none";
+  document.getElementById("install-title").textContent = "Installing skills";
+  renderSkills();
+});
 searchEl.addEventListener("input", e => { searchQuery = e.target.value; renderSkills(); });
 
 // ── Start ──────────────────────────────────────────────────────────────────

@@ -88,7 +88,6 @@ html, body {
 .btn-icon.active { background: rgba(204,120,50,0.15); border-color: var(--accent); color: var(--accent-2); }
 .btn-icon.spinning svg { animation: spin 0.7s linear infinite; }
 
-/* ── Animations ──────────────────────────────────────────────────────────── */
 @keyframes spin    { to { transform: rotate(360deg); } }
 @keyframes fadeIn  { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slideDown {
@@ -96,12 +95,12 @@ html, body {
   to   { opacity: 1; transform: translateY(0); }
 }
 @keyframes slideUp {
-  from { opacity: 0; transform: translateY(20px); }
+  from { opacity: 0; transform: translateY(16px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 @keyframes orbPulse {
   0%, 100% { opacity: 1; transform: scale(1); }
-  50%       { opacity: 0.2; transform: scale(1.08); }
+  50%       { opacity: 0.2; transform: scale(1.05); }
 }
 @keyframes blink { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
 
@@ -311,32 +310,28 @@ html, body {
   position: absolute;
   inset: 0;
   z-index: 100;
-  display: flex;          /* flex to center the card */
+  display: flex;
   align-items: center;
   justify-content: center;
   animation: fadeIn 0.2s ease;
 }
 
-/* Blurred dark backdrop that fills the whole popup */
 .overlay-dim {
   position: absolute;
   inset: 0;
   background: rgba(8, 8, 10, 0.88);
   backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
 }
 
-/* Centered floating card — sits above the dim layer */
 .overlay-content {
   position: relative;
   z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
-  padding: 28px 24px 22px;
+  gap: 14px;
+  padding: 28px 24px 24px;
   width: calc(100% - 48px);
-  max-width: 320px;
   background: var(--surface);
   border: 1px solid var(--border2);
   border-radius: 16px;
@@ -344,7 +339,7 @@ html, body {
   animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* ── Orb ─────────────────────────────────────────────────────────────────── */
+/* Orb */
 .install-orb {
   width: 64px; height: 64px; border-radius: 50%;
   background: rgba(204,120,50,0.1);
@@ -360,27 +355,14 @@ html, body {
   pointer-events: none;
 }
 .orb-ring-1 { inset: -10px; animation-delay: 0s; }
-.orb-ring-2 { inset: -22px; border-color: rgba(204,120,50,0.07); animation-delay: 0.6s; }
+.orb-ring-2 { inset: -22px; border-color: rgba(204,120,50,0.07); animation-delay: 0.5s; }
 
 .install-orb-icon { font-size: 28px; z-index: 1; line-height: 1; }
 
-/* ── Overlay text ────────────────────────────────────────────────────────── */
 .install-title {
   font-weight: 700; font-size: 15px;
   color: var(--text); letter-spacing: -0.2px; text-align: center;
 }
-
-/* Small pill notice */
-.bg-notice {
-  display: flex; align-items: center; gap: 5px;
-  font-family: 'DM Mono', monospace; font-size: 9.5px;
-  color: var(--text-3);
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  padding: 4px 10px;
-}
-.bg-notice svg { flex-shrink: 0; color: var(--blue); }
 
 .install-status {
   font-family: 'DM Mono', monospace; font-size: 10.5px;
@@ -388,15 +370,13 @@ html, body {
   min-height: 15px; width: 100%;
 }
 
-/* ── Progress rows ───────────────────────────────────────────────────────── */
-.progress-items {
+/* Progress items inside overlay */
+.overlay-content .progress-items {
   width: 100%;
   display: flex; flex-direction: column; gap: 6px;
   max-height: 180px; overflow-y: auto;
   scrollbar-width: thin; scrollbar-color: var(--border2) transparent;
 }
-.progress-items::-webkit-scrollbar { width: 3px; }
-.progress-items::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
 
 .progress-item {
   display: flex; align-items: center; gap: 10px;
@@ -428,13 +408,30 @@ html, body {
 .status-error       { color: var(--red); }
 .status-pending     { color: var(--text-3); }
 
-/* ── Done button ─────────────────────────────────────────────────────────── */
+/* Done button */
 .btn-done {
   width: 100%; height: 36px;
   background: var(--accent); border: none;
   border-radius: var(--radius-sm); color: #fff;
   font-family: 'Syne', sans-serif; font-weight: 600; font-size: 13px;
   cursor: pointer; transition: all 0.15s ease;
-  margin-top: 2px;
 }
 .btn-done:hover { background: var(--accent-2); }
+
+/* ── Uninstall button ─────────────────────────────────────────────────────── */
+.btn-uninstall {
+  width: 26px; height: 26px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-3);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  margin-top: 1px;
+}
+.btn-uninstall:hover {
+  background: rgba(224, 92, 92, 0.12);
+  border-color: rgba(224, 92, 92, 0.3);
+  color: var(--red);
+}

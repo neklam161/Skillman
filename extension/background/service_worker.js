@@ -66,6 +66,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === "UNINSTALL_SKILL") {
+    handleUninstall(message.skill)
+      .then(() => sendResponse({ ok: true }))
+      .catch((err) => {
+        console.error("[Skillman] UNINSTALL error:", err.message);
+        sendResponse({ ok: false, error: err.message });
+      });
+    return true;
+  }
+
   if (message.type === "GET_INSTALLED") {
     chrome.storage.local.get("installed", (res) => {
       sendResponse({ installed: res.installed || [] });
@@ -416,6 +426,168 @@ async function handleInstallZipped(skillName, zipBase64) {
   ];
   await chrome.storage.local.set({ installed: updated });
   console.log("[Skillman] Zipped install saved:", skillName);
+}
+
+// ── Uninstall orchestration ──────────────────────────────────────────────────
+
+async function handleUninstall(skill) {
+  console.log('[Skillman] Uninstalling:', skill.name);
+
+  // Open skills page in background
+  const skillsTabs = await chrome.tabs.query({ url: 'https://claude.ai/customize/skills' });
+  const anyTabs    = await chrome.tabs.query({ url: 'https://claude.ai/*' });
+  anyTabs.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0));
+
+  let claudeTab;
+  if (skillsTabs.length > 0) {
+    claudeTab = skillsTabs[0];
+  } else if (anyTabs.length > 0) {
+    claudeTab = await chrome.tabs.create({
+      url: 'https://claude.ai/customize/skills',
+      active: false,
+      index: anyTabs[0].index + 1,
+      windowId: anyTabs[0].windowId,
+    });
+  } else {
+    claudeTab = await chrome.tabs.create({ url: 'https://claude.ai/customize/skills', active: false });
+  }
+
+  await waitForTabLoad(claudeTab.id);
+  await sleep(2500);
+
+  // Check login
+  const loginCheck = await checkLoggedIn(claudeTab.id).catch(() => ({ isLoginPage: false }));
+  if (loginCheck.isLoginPage) throw new Error('Not logged in to Claude');
+
+  // Inject uninstall script
+  const results = await withTimeout(
+    chrome.scripting.executeScript({
+      target: { tabId: claudeTab.id },
+      func: injectSkillUninstall,
+      args: [skill.display_name || skill.name, skill.name],
+    }),
+    20000,
+    'uninstall inject'
+  );
+
+  const result = results?.[0]?.result;
+  if (!result?.ok) throw new Error(result?.error || 'Could not find skill on claude.ai');
+
+  // Close tab and update storage
+  try { await chrome.tabs.remove(claudeTab.id); } catch(e) {}
+
+  const existing = await getInstalled();
+  await chrome.storage.local.set({
+    installed: existing.filter(s => s.name !== skill.name)
+  });
+
+  console.log('[Skillman] Uninstalled:', skill.name);
+}
+
+function injectSkillUninstall(displayName, skillName) {
+  return new Promise((resolve) => {
+    try {
+      console.log('[Skillman-inject] Looking for skill to uninstall:', displayName, skillName);
+
+      // Find the skill in the list — try matching by display name or skill name
+      const allItems = Array.from(document.querySelectorAll('li, [role="listitem"], [class*="skill"], [class*="item"]'));
+      const nameVariants = [
+        displayName,
+        skillName,
+        skillName.replace(/-/g, ' '),
+        skillName.replace(/_/g, ' '),
+      ].map(n => n.toLowerCase());
+
+      let skillItem = null;
+      for (const item of allItems) {
+        const text = item.textContent?.toLowerCase() || '';
+        if (nameVariants.some(n => text.includes(n))) {
+          skillItem = item;
+          break;
+        }
+      }
+
+      if (!skillItem) {
+        // Try a broader search — any clickable element containing the name
+        const allClickable = Array.from(document.querySelectorAll('button, [role="button"], a, div[tabindex]'));
+        for (const el of allClickable) {
+          const text = el.textContent?.toLowerCase() || '';
+          if (nameVariants.some(n => text.includes(n) && text.length < 200)) {
+            skillItem = el;
+            break;
+          }
+        }
+      }
+
+      if (!skillItem) {
+        resolve({ ok: false, error: `Skill "${displayName}" not found on claude.ai — it may already be removed` });
+        return;
+      }
+
+      console.log('[Skillman-inject] Found skill item, clicking it');
+      skillItem.click();
+
+      // Wait for three-dot menu to appear
+      setTimeout(() => {
+        const menuBtns = Array.from(document.querySelectorAll('button, [role="button"]'));
+        const threeDotsBtn = menuBtns.find(btn => {
+          const label = (btn.getAttribute('aria-label') || '').toLowerCase();
+          const title = (btn.getAttribute('title') || '').toLowerCase();
+          // Look for ellipsis/more options button
+          return label.includes('more') || label.includes('option') || label.includes('menu') ||
+                 title.includes('more') || title.includes('option') ||
+                 btn.innerHTML.includes('ellipsis') || btn.innerHTML.includes('circle') ||
+                 btn.textContent?.trim() === '···' || btn.textContent?.trim() === '...' ||
+                 btn.querySelector('svg circle') !== null;
+        });
+
+        if (!threeDotsBtn) {
+          resolve({ ok: false, error: 'Could not find the options (•••) button' });
+          return;
+        }
+
+        console.log('[Skillman-inject] Clicking three-dot menu');
+        threeDotsBtn.click();
+
+        // Wait for dropdown to appear, then click Delete
+        setTimeout(() => {
+          const allBtns = Array.from(document.querySelectorAll('button, [role="menuitem"], [role="option"]'));
+          const deleteBtn = allBtns.find(btn => {
+            const text = (btn.textContent || '').toLowerCase().trim();
+            return text === 'delete' || text.includes('delete') || text.includes('remove');
+          });
+
+          if (!deleteBtn) {
+            resolve({ ok: false, error: 'Could not find Delete option in menu' });
+            return;
+          }
+
+          console.log('[Skillman-inject] Clicking delete');
+          deleteBtn.click();
+
+          // Wait for confirmation dialog, then click confirm
+          setTimeout(() => {
+            const allBtns2 = Array.from(document.querySelectorAll('button, [role="button"]'));
+            const confirmBtn = allBtns2.find(btn => {
+              const text = (btn.textContent || '').toLowerCase().trim();
+              return text === 'delete' || text === 'confirm' || text === 'yes' || text === 'remove';
+            });
+
+            if (!confirmBtn) {
+              resolve({ ok: false, error: 'Could not find confirmation button' });
+              return;
+            }
+
+            console.log('[Skillman-inject] Confirming deletion');
+            confirmBtn.click();
+            setTimeout(() => resolve({ ok: true }), 1000);
+          }, 1000);
+        }, 800);
+      }, 800);
+    } catch (e) {
+      resolve({ ok: false, error: e.message });
+    }
+  });
 }
 
 // ── Injected into claude.ai page ──────────────────────────────────────────────
