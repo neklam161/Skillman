@@ -29,9 +29,9 @@ async function fetchRegistry() {
 
 async function downloadSkillFile(url) {
   console.log("[Skillman] Downloading skill from:", url);
-  const res = await fetch(url);
+  const res = await withTimeout(fetch(url), 15000, "download");
   if (!res.ok) throw new Error(`HTTP ${res.status} from ${url}`);
-  const buffer = await res.arrayBuffer();
+  const buffer = await withTimeout(res.arrayBuffer(), 15000, "read response");
   console.log("[Skillman] Downloaded", buffer.byteLength, "bytes");
   return buffer;
 }
@@ -175,25 +175,24 @@ async function handleInstall(skills) {
 
   let claudeTab;
   try {
-    // Check if already on the skills page — skip navigation to avoid stealing focus
+    // Pick the best claude.ai tab — prefer skills page, then most recently active
     const skillsTabs = await chrome.tabs.query({ url: "https://claude.ai/customize/skills" });
     const anyTabs    = await chrome.tabs.query({ url: "https://claude.ai/*" });
+    // Sort by lastAccessed descending so we pick the most recently used tab
+    anyTabs.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0));
 
     if (skillsTabs.length > 0) {
-      // Already on the right page — use it without navigating (no focus steal)
       claudeTab = skillsTabs[0];
       console.log(`[Skillman] Already on skills page, tab ${claudeTab.id}`);
     } else if (anyTabs.length > 0) {
-      // Claude is open but on a different page — open a NEW background tab
-      // Using create instead of update avoids Chrome switching focus
+      // Create a new background tab next to the most recently active claude tab
       claudeTab = await chrome.tabs.create({
         url: "https://claude.ai/customize/skills",
         active: false,
-        index: anyTabs[0].index + 1, // place next to existing claude tab
+        index: anyTabs[0].index + 1,
         windowId: anyTabs[0].windowId,
       });
     } else {
-      // No claude tab at all — create one in background
       claudeTab = await chrome.tabs.create({
         url: "https://claude.ai/customize/skills",
         active: false,
@@ -218,11 +217,20 @@ async function handleInstall(skills) {
   const winner = await Promise.race([
     pageLoaded.then(() => "loaded"),
     tabClosed.then(() => "closed"),
+    sleep(30000).then(() => "timeout"),
   ]);
 
   if (winner === "closed") {
     console.warn("[Skillman] Tab was closed before page loaded");
     notifyPopup({ type: "STATUS", message: "The Claude tab was closed. Install cancelled." });
+    notifyPopup({ type: "DONE", hadErrors: true });
+    await clearSession();
+    return;
+  }
+
+  if (winner === "timeout") {
+    console.warn("[Skillman] Page load timed out after 30s");
+    notifyPopup({ type: "STATUS", message: "Claude took too long to load. Check your connection and try again." });
     notifyPopup({ type: "DONE", hadErrors: true });
     await clearSession();
     return;
@@ -282,12 +290,35 @@ async function handleInstall(skills) {
       notifyPopup({ type: "STATUS", message: `Installing ${skill.display_name || skill.name}...` });
       await updateSessionProgress(skill.name, "installing");
 
-      const base64 = bufferToBase64(buffer);
-      const results = await chrome.scripting.executeScript({
+      // Check if skill already exists on claude.ai — if so, skip it
+      const dupeCheck = await chrome.scripting.executeScript({
         target: { tabId: claudeTab.id },
-        func: injectSkillUpload,
-        args: [skill.name, base64],
+        func: (name) => {
+          const items = document.querySelectorAll("[data-skill-name], .skill-name, h3, h4");
+          const pageText = document.body.innerText.toLowerCase();
+          return pageText.includes(name.toLowerCase().replace(/-/g, " "));
+        },
+        args: [skill.name],
       });
+      const alreadyExists = dupeCheck?.[0]?.result;
+      if (alreadyExists) {
+        console.warn(`[Skillman] Skill "${skill.name}" appears to already exist, skipping`);
+        notifyPopup({ type: "PROGRESS", skill: skill.name, status: "installed" });
+        notifyPopup({ type: "STATUS", message: `${skill.display_name || skill.name} already installed, skipping.` });
+        await updateSessionProgress(skill.name, "installed");
+        continue;
+      }
+
+      const base64 = bufferToBase64(buffer);
+      const results = await withTimeout(
+        chrome.scripting.executeScript({
+          target: { tabId: claudeTab.id },
+          func: injectSkillUpload,
+          args: [skill.name, base64],
+        }),
+        20000,
+        `inject ${skill.name}`
+      );
 
       console.log(`[Skillman] Inject result for ${skill.name}:`, JSON.stringify(results));
       await sleep(3000);
@@ -328,10 +359,11 @@ async function handleInstallZipped(skillName, zipBase64) {
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   const buffer = bytes.buffer;
 
-  // Open claude.ai tab without stealing focus
+  // Open claude.ai tab without stealing focus — prefer most recently active
   let claudeTab;
   const skillsTabs = await chrome.tabs.query({ url: "https://claude.ai/customize/skills" });
   const anyTabs    = await chrome.tabs.query({ url: "https://claude.ai/*" });
+  anyTabs.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0));
   if (skillsTabs.length > 0) {
     claudeTab = skillsTabs[0];
   } else if (anyTabs.length > 0) {
@@ -468,6 +500,13 @@ function injectSkillUpload(skillName, base64Data) {
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+function withTimeout(promise, ms, label) {
+  const timeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error(`Timed out after ${ms / 1000}s (${label})`)), ms)
+  );
+  return Promise.race([promise, timeout]);
 }
 
 function bufferToBase64(buffer) {
