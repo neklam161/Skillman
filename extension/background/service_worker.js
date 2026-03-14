@@ -253,7 +253,8 @@ async function handleInstall(skills) {
 
   console.log("[Skillman] Logged in, page ready. Starting injection...");
 
-  // Step 5: Inject each skill — watch for tab close between each one (#3)
+  // Step 5: Inject each skill — reload page between each to reset form state
+  let isFirst = true;
   for (const { skill, buffer } of blobs) {
     // Check if tab still exists before each injection
     const tabStillOpen = await chrome.tabs.get(claudeTab.id).then(() => true).catch(() => false);
@@ -264,6 +265,16 @@ async function handleInstall(skills) {
       await clearSession();
       return;
     }
+
+    // Reload the skills page between skills to clear the form (fixes "name already in use" bug)
+    if (!isFirst) {
+      console.log("[Skillman] Reloading skills page to reset form...");
+      notifyPopup({ type: "STATUS", message: "Preparing next skill..." });
+      await chrome.tabs.update(claudeTab.id, { url: "https://claude.ai/customize/skills" });
+      await waitForTabLoad(claudeTab.id);
+      await sleep(2000);
+    }
+    isFirst = false;
 
     try {
       console.log(`[Skillman] Injecting: ${skill.name}`);
