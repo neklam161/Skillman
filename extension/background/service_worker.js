@@ -36,57 +36,6 @@ async function downloadSkillFile(url) {
   return buffer;
 }
 
-// ── FIX #4: SHA-256 integrity verification ────────────────────────────────────
-//
-// Each skill in registry.json carries a "sha256" field (hex string).
-// After downloading, we hash the buffer with SubtleCrypto and compare.
-// If they don't match we throw — the install is aborted for that skill.
-
-async function verifySHA256(buffer, expectedHex) {
-  if (!expectedHex) {
-    // No hash in registry entry — skip verification but warn.
-    // Once all skills are hashed this branch should never be hit.
-    console.warn("[Skillman] No sha256 in registry entry — skipping integrity check");
-    return;
-  }
-
-  const hashBuffer = await crypto.subtle.digest("SHA-256", buffer);
-  const hashArray  = Array.from(new Uint8Array(hashBuffer));
-  const actualHex  = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
-
-  if (actualHex !== expectedHex.toLowerCase()) {
-    throw new Error(
-      `Integrity check failed for skill.\n` +
-      `Expected: ${expectedHex}\n` +
-      `Got:      ${actualHex}\n` +
-      `The file may have been tampered with or the registry is out of date.`
-    );
-  }
-
-  console.log("[Skillman] Integrity OK:", actualHex.slice(0, 16) + "…");
-}
-
-// ── FIX #3: Safe base64 encoding (no stack overflow on large files) ───────────
-//
-// The naive approach — btoa(String.fromCharCode(...new Uint8Array(buffer))) —
-// spreads the entire array as function arguments and crashes the JS engine
-// on files larger than ~5 MB (call stack limit).
-//
-// This version processes bytes in 8 KB chunks so it works on any file size.
-
-function bufferToBase64(buffer) {
-  const bytes     = new Uint8Array(buffer);
-  const chunkSize = 8192; // 8 KB per chunk — well within stack limits
-  let binary = "";
-
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, i + chunkSize);
-    binary += String.fromCharCode(...chunk);
-  }
-
-  return btoa(binary);
-}
-
 // ── Message router ────────────────────────────────────────────────────────────
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -124,6 +73,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  // Popup reopened mid-install — send back current session state
   if (message.type === "GET_SESSION") {
     chrome.storage.local.get("session", (res) => {
       sendResponse({ session: res.session || null });
@@ -132,7 +82,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
-// ── Session state helpers ─────────────────────────────────────────────────────
+// ── Session state helpers (fix #2 — popup close) ─────────────────────────────
+// We persist install progress to storage so the popup can recover it on reopen
 
 async function setSession(data) {
   await chrome.storage.local.set({ session: data });
@@ -142,26 +93,27 @@ async function clearSession() {
   await chrome.storage.local.remove("session");
 }
 
-// ── Tab close detection ───────────────────────────────────────────────────────
+// ── Tab close detection (fix #3) ─────────────────────────────────────────────
 
 function waitForTabClose(tabId) {
   return new Promise((resolve) => {
     const listener = (id) => {
       if (id === tabId) {
         chrome.tabs.onRemoved.removeListener(listener);
-        resolve(true);
+        resolve(true); // true = tab was closed
       }
     };
     chrome.tabs.onRemoved.addListener(listener);
   });
 }
 
-// ── Login check ───────────────────────────────────────────────────────────────
+// ── Login check (fix #1) ──────────────────────────────────────────────────────
 
 async function checkLoggedIn(tabId) {
   const results = await chrome.scripting.executeScript({
     target: { tabId },
     func: () => {
+      // If we got redirected to login, the URL won't be the skills page
       const url = window.location.href;
       const isLoginPage =
         url.includes("/login") ||
@@ -180,6 +132,7 @@ async function checkLoggedIn(tabId) {
 async function handleInstall(skills) {
   console.log("[Skillman] Starting install for:", skills.map(s => s.name));
 
+  // Save session so popup can recover if closed
   await setSession({
     skills: skills.map(s => ({ name: s.name, display_name: s.display_name, icon: s.icon })),
     progress: {},
@@ -187,7 +140,7 @@ async function handleInstall(skills) {
     startedAt: Date.now()
   });
 
-  // Step 1: Download + verify all .skill files
+  // Step 1: Download all .skill files
   const blobs = [];
   for (const skill of skills) {
     try {
@@ -196,30 +149,14 @@ async function handleInstall(skills) {
       await updateSessionProgress(skill.name, "downloading");
 
       const buffer = await downloadSkillFile(skill.source);
-
-      // FIX #4: Verify integrity before proceeding
-      notifyPopup({ type: "PROGRESS", skill: skill.name, status: "verifying" });
-      await updateSessionProgress(skill.name, "verifying");
-      await verifySHA256(buffer, skill.sha256);
-
       blobs.push({ skill, buffer });
 
       notifyPopup({ type: "PROGRESS", skill: skill.name, status: "downloaded" });
       await updateSessionProgress(skill.name, "downloaded");
-      console.log(`[Skillman] Download + verify OK: ${skill.name}`);
+      console.log(`[Skillman] Download OK: ${skill.name}`);
     } catch (e) {
-      console.error(`[Skillman] Download/verify FAILED for ${skill.name}:`, e.message);
-
-      // Surface integrity failures differently from network errors
-      const isIntegrityError = e.message.startsWith("Integrity check failed");
-      notifyPopup({
-        type: "PROGRESS",
-        skill: skill.name,
-        status: "error",
-        message: isIntegrityError
-          ? "Integrity check failed — skill file may be corrupted"
-          : e.message
-      });
+      console.error(`[Skillman] Download FAILED for ${skill.name}:`, e.message);
+      notifyPopup({ type: "PROGRESS", skill: skill.name, status: "error", message: e.message });
       await updateSessionProgress(skill.name, "error");
     }
   }
@@ -238,20 +175,25 @@ async function handleInstall(skills) {
 
   let claudeTab;
   try {
+    // Check if already on the skills page — skip navigation to avoid stealing focus
     const skillsTabs = await chrome.tabs.query({ url: "https://claude.ai/customize/skills" });
     const anyTabs    = await chrome.tabs.query({ url: "https://claude.ai/*" });
 
     if (skillsTabs.length > 0) {
+      // Already on the right page — use it without navigating (no focus steal)
       claudeTab = skillsTabs[0];
       console.log(`[Skillman] Already on skills page, tab ${claudeTab.id}`);
     } else if (anyTabs.length > 0) {
+      // Claude is open but on a different page — open a NEW background tab
+      // Using create instead of update avoids Chrome switching focus
       claudeTab = await chrome.tabs.create({
         url: "https://claude.ai/customize/skills",
         active: false,
-        index: anyTabs[0].index + 1,
+        index: anyTabs[0].index + 1, // place next to existing claude tab
         windowId: anyTabs[0].windowId,
       });
     } else {
+      // No claude tab at all — create one in background
       claudeTab = await chrome.tabs.create({
         url: "https://claude.ai/customize/skills",
         active: false,
@@ -266,11 +208,11 @@ async function handleInstall(skills) {
     return;
   }
 
-  // Step 3: Wait for page load, watching for tab close
+  // Step 3: Wait for page load — but also watch for tab being closed (#3)
   console.log("[Skillman] Waiting for page load...");
   notifyPopup({ type: "STATUS", message: "Waiting for Claude to load..." });
 
-  const tabClosed  = waitForTabClose(claudeTab.id);
+  const tabClosed = waitForTabClose(claudeTab.id);
   const pageLoaded = waitForTabLoad(claudeTab.id);
 
   const winner = await Promise.race([
@@ -288,7 +230,7 @@ async function handleInstall(skills) {
 
   await sleep(3000);
 
-  // Step 4: Check login
+  // Step 4: Check if user is actually logged in (#1)
   console.log("[Skillman] Checking login status...");
   let loginCheck;
   try {
@@ -298,7 +240,7 @@ async function handleInstall(skills) {
   }
 
   if (loginCheck.isLoginPage) {
-    console.warn("[Skillman] User is not logged in:", loginCheck.url);
+    console.warn("[Skillman] User is not logged in, detected login page:", loginCheck.url);
     notifyPopup({
       type: "STATUS",
       message: "⚠️ You're not logged in to Claude. Please log in and try again."
@@ -311,8 +253,9 @@ async function handleInstall(skills) {
 
   console.log("[Skillman] Logged in, page ready. Starting injection...");
 
-  // Step 5: Inject each skill
+  // Step 5: Inject each skill — watch for tab close between each one (#3)
   for (const { skill, buffer } of blobs) {
+    // Check if tab still exists before each injection
     const tabStillOpen = await chrome.tabs.get(claudeTab.id).then(() => true).catch(() => false);
     if (!tabStillOpen) {
       console.warn("[Skillman] Tab closed mid-install");
@@ -328,7 +271,7 @@ async function handleInstall(skills) {
       notifyPopup({ type: "STATUS", message: `Installing ${skill.display_name || skill.name}...` });
       await updateSessionProgress(skill.name, "installing");
 
-      const base64 = bufferToBase64(buffer); // FIX #3: now safe for large files
+      const base64 = bufferToBase64(buffer);
       const results = await chrome.scripting.executeScript({
         target: { tabId: claudeTab.id },
         func: injectSkillUpload,
@@ -347,7 +290,7 @@ async function handleInstall(skills) {
     }
   }
 
-  // Step 6: Persist installed list
+  // Step 6: Save installed to storage
   const existing = await getInstalled();
   const updated = [
     ...existing.filter((s) => !blobs.find((b) => b.skill.name === s.name)),
@@ -356,6 +299,7 @@ async function handleInstall(skills) {
   await chrome.storage.local.set({ installed: updated });
   console.log("[Skillman] Saved to storage:", updated.map(s => s.name));
 
+  // Close the background tab when done (#5)
   try { await chrome.tabs.remove(claudeTab.id); } catch(e) {}
 
   notifyPopup({ type: "STATUS", message: "All done!" });
@@ -369,10 +313,11 @@ async function handleInstallZipped(skillName, zipBase64) {
   console.log("[Skillman] Installing zipped skill:", skillName);
 
   const binary = atob(zipBase64);
-  const bytes  = new Uint8Array(binary.length);
+  const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   const buffer = bytes.buffer;
 
+  // Open claude.ai tab without stealing focus
   let claudeTab;
   const skillsTabs = await chrome.tabs.query({ url: "https://claude.ai/customize/skills" });
   const anyTabs    = await chrome.tabs.query({ url: "https://claude.ai/*" });
@@ -389,7 +334,8 @@ async function handleInstallZipped(skillName, zipBase64) {
     claudeTab = await chrome.tabs.create({ url: "https://claude.ai/customize/skills", active: false });
   }
 
-  const tabClosed  = waitForTabClose(claudeTab.id);
+  // Watch for tab close
+  const tabClosed = waitForTabClose(claudeTab.id);
   const pageLoaded = waitForTabLoad(claudeTab.id);
   const winner = await Promise.race([
     pageLoaded.then(() => "loaded"),
@@ -402,21 +348,24 @@ async function handleInstallZipped(skillName, zipBase64) {
 
   await sleep(3000);
 
+  // Check login
   const loginCheck = await checkLoggedIn(claudeTab.id).catch(() => ({ isLoginPage: false }));
   if (loginCheck.isLoginPage) {
     throw new Error("Not logged in to Claude — please log in and try again");
   }
 
+  // Check tab still open
   const tabStillOpen = await chrome.tabs.get(claudeTab.id).then(() => true).catch(() => false);
   if (!tabStillOpen) throw new Error("Claude tab was closed");
 
-  const base64 = bufferToBase64(buffer); // FIX #3: safe for large files
+  const base64 = bufferToBase64(buffer);
   await chrome.scripting.executeScript({
     target: { tabId: claudeTab.id },
     func: injectSkillUpload,
     args: [skillName, base64],
   });
 
+  // Save to storage
   const existing = await getInstalled();
   const updated = [
     ...existing.filter(s => s.name !== skillName),
@@ -426,18 +375,14 @@ async function handleInstallZipped(skillName, zipBase64) {
   console.log("[Skillman] Zipped install saved:", skillName);
 }
 
-// ── FIX #2 (partial): Better injection error messages ─────────────────────────
-//
-// injectSkillUpload now returns a structured result object instead of
-// resolving/rejecting silently, so the caller can surface a clear message
-// when Claude's DOM changes.
+// ── Injected into claude.ai page ──────────────────────────────────────────────
 
 function injectSkillUpload(skillName, base64Data) {
   return new Promise((resolve, reject) => {
     console.log("[Skillman-inject] Starting injection for:", skillName);
     try {
       const binary = atob(base64Data);
-      const bytes  = new Uint8Array(binary.length);
+      const bytes = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
       const blob = new Blob([bytes], { type: "application/zip" });
       const file = new File([blob], `${skillName}.skill`, { type: "application/zip" });
@@ -448,7 +393,7 @@ function injectSkillUpload(skillName, base64Data) {
 
       let skillInput = null;
       for (const input of allInputs) {
-        const accepts   = input.accept || "";
+        const accepts = input.accept || "";
         const parentText = input.closest("[class]")?.textContent?.toLowerCase() || "";
         if (accepts.includes("zip") || accepts.includes(".skill") || parentText.includes("skill")) {
           skillInput = input;
@@ -458,55 +403,38 @@ function injectSkillUpload(skillName, base64Data) {
 
       if (!skillInput) {
         const allButtons = Array.from(document.querySelectorAll("button, [role='button']"));
-        const btnTexts   = allButtons.map(b => b.textContent?.trim()).filter(Boolean);
-        console.log("[Skillman-inject] Buttons found:", JSON.stringify(btnTexts.slice(0, 20)));
+        const btnTexts = allButtons.map(b => b.textContent?.trim()).filter(Boolean);
+        console.log("[Skillman-inject] Buttons:", JSON.stringify(btnTexts.slice(0, 20)));
 
         const uploadBtn = allButtons.find(btn => {
-          const text  = (btn.textContent || "").toLowerCase();
+          const text = (btn.textContent || "").toLowerCase();
           const label = (btn.getAttribute("aria-label") || "").toLowerCase();
           return text.includes("upload") || text.includes("add skill") ||
                  text.includes("import") || label.includes("upload") || label.includes("skill");
         });
 
         if (uploadBtn) {
-          console.log("[Skillman-inject] Clicking upload button:", uploadBtn.textContent?.trim());
+          console.log("[Skillman-inject] Clicking button:", uploadBtn.textContent?.trim());
           uploadBtn.click();
           setTimeout(() => {
             const inputs = document.querySelectorAll('input[type="file"]');
             if (inputs.length > 0) {
               injectFileIntoInput(inputs[inputs.length - 1], file, resolve, reject);
             } else {
-              // FIX #2: Actionable message when Claude's DOM has changed
-              reject(new Error(
-                "Could not find a file input after clicking the upload button. " +
-                "Claude's page layout may have changed — please report this at " +
-                "github.com/neklam161/Skillman/issues so we can update the extension."
-              ));
+              reject(new Error("No file input found after clicking upload button"));
             }
           }, 1000);
           return;
         }
 
-        // FIX #2: Distinguish "wrong page" from "DOM changed"
-        const onSkillsPage = window.location.pathname.includes("/customize/skills");
-        if (!onSkillsPage) {
-          reject(new Error(
-            "Skillman could not reach the Claude skills page. " +
-            "Please make sure you are logged in to claude.ai and try again."
-          ));
-        } else {
-          reject(new Error(
-            "Could not find the skill upload button. Claude's page layout may have " +
-            "changed — please report this at github.com/neklam161/Skillman/issues."
-          ));
-        }
+        reject(new Error("Could not find upload button. Page buttons: " + JSON.stringify(btnTexts.slice(0, 10))));
         return;
       }
 
       injectFileIntoInput(skillInput, file, resolve, reject);
     } catch (e) {
-      console.error("[Skillman-inject] Unexpected error:", e.message);
-      reject(new Error(`Injection error: ${e.message}`));
+      console.error("[Skillman-inject] Error:", e.message);
+      reject(e);
     }
 
     function injectFileIntoInput(input, file, resolve, reject) {
@@ -515,11 +443,11 @@ function injectSkillUpload(skillName, base64Data) {
         dt.items.add(file);
         input.files = dt.files;
         input.dispatchEvent(new Event("change", { bubbles: true }));
-        input.dispatchEvent(new Event("input",  { bubbles: true }));
+        input.dispatchEvent(new Event("input", { bubbles: true }));
         console.log("[Skillman-inject] File injected OK");
         setTimeout(resolve, 1500);
       } catch (e) {
-        reject(new Error(`Could not set file on input: ${e.message}`));
+        reject(e);
       }
     }
   });
@@ -531,6 +459,13 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+function bufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
 function waitForTabLoad(tabId) {
   return new Promise((resolve) => {
     const listener = (id, info) => {
@@ -540,7 +475,7 @@ function waitForTabLoad(tabId) {
       }
     };
     chrome.tabs.onUpdated.addListener(listener);
-    setTimeout(resolve, 8000); // fallback
+    setTimeout(resolve, 8000); // fallback timeout
   });
 }
 
@@ -551,9 +486,7 @@ async function getInstalled() {
 }
 
 async function updateSessionProgress(skillName, status) {
-  const data = await new Promise(resolve =>
-    chrome.storage.local.get("session", r => resolve(r.session))
-  );
+  const data = await new Promise(resolve => chrome.storage.local.get("session", r => resolve(r.session)));
   if (!data) return;
   data.progress = data.progress || {};
   data.progress[skillName] = status;
